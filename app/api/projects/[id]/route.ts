@@ -21,7 +21,8 @@ export async function GET(
     const project = await Project.findById(params.id)
       .populate('owner', 'name email image')
       .populate('members', 'name email image')
-      .populate('pendingRequests', 'name email image');
+      .populate('pendingRequests', 'name email image')
+      .populate('chatMessages.user', 'name email image');
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });

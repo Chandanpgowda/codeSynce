@@ -304,7 +304,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   return (
     <div className="h-screen flex flex-col bg-dark-900">
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 h-12 bg-dark-800 border-b border-dark-600">
+      <div className="flex items-center justify-between px-4 h-12 bg-dark-800 border-b border-dark-600 shrink-0">
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/home')}
@@ -377,7 +377,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
       {/* Join Requests Panel */}
       {showRequests && isOwner && (
-        <div className="bg-dark-800 border-b border-dark-600 p-4">
+        <div className="bg-dark-800 border-b border-dark-600 p-4 shrink-0">
           <h3 className="text-sm font-semibold text-white mb-3">Join Requests</h3>
           <div className="space-y-2">
             {project.pendingRequests.map((user) => (
@@ -415,7 +415,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main Content - VS Code style layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* File Explorer */}
         <FileExplorer
@@ -429,156 +429,162 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           }}
         />
 
-        {/* Editor */}
-        <div className="flex-1 flex flex-col">
-          {/* Editor Tabs */}
-          <div className="flex items-center bg-dark-800 border-b border-dark-600 overflow-x-auto">
-            {collectFiles(project.files).map((file) => (
-              <button
-                key={file.path}
-                onClick={() => setActiveFile(file)}
-                className={`px-4 py-2 text-sm border-r border-dark-600 whitespace-nowrap transition-colors ${
-                  activeFile?.path === file.path
-                    ? 'bg-dark-900 text-white border-t-2 border-t-primary-600'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                {file.name}
-              </button>
-            ))}
-          </div>
+        {/* Center Area: Editor on top, Terminal at bottom */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Editor + Right Panel Row */}
+          <div className="flex-1 flex min-h-0">
+            {/* Editor */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Editor Tabs */}
+              <div className="flex items-center bg-dark-800 border-b border-dark-600 overflow-x-auto shrink-0">
+                {collectFiles(project.files).map((file) => (
+                  <button
+                    key={file.path}
+                    onClick={() => setActiveFile(file)}
+                    className={`px-4 py-2 text-sm border-r border-dark-600 whitespace-nowrap transition-colors ${
+                      activeFile?.path === file.path
+                        ? 'bg-dark-900 text-white border-t-2 border-t-primary-600'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {file.name}
+                  </button>
+                ))}
+              </div>
 
-          {/* Monaco Editor */}
-          <div className="flex-1">
-            {activeFile && (
-              <Editor
-                key={refreshKey}
-                height="100%"
-                defaultLanguage={activeFile.language || 'javascript'}
-                language={activeFile.language || 'javascript'}
-                value={activeFile.content || ''}
-                theme="vs-dark"
-                onChange={handleEditorChange}
-                onMount={handleEditorMount}
-                options={{
-                  fontSize: 14,
-                  minimap: { enabled: true },
-                  scrollBeyondLastLine: false,
-                  automaticLayout: true,
-                  tabSize: 2,
-                  wordWrap: 'on',
-                  lineNumbers: 'on',
-                  folding: true,
-                  bracketPairColorization: { enabled: true },
-                  renderWhitespace: 'selection',
-                  cursorBlinking: 'smooth',
-                  cursorSmoothCaretAnimation: 'on',
-                  smoothScrolling: true,
-                  padding: { top: 10, bottom: 10 },
-                }}
-              />
-            )}
-          </div>
-        </div>
+              {/* Monaco Editor */}
+              <div className="flex-1 min-h-0">
+                {activeFile && (
+                  <Editor
+                    key={refreshKey}
+                    height="100%"
+                    defaultLanguage={activeFile.language || 'javascript'}
+                    language={activeFile.language || 'javascript'}
+                    value={activeFile.content || ''}
+                    theme="vs-dark"
+                    onChange={handleEditorChange}
+                    onMount={handleEditorMount}
+                    options={{
+                      fontSize: 14,
+                      minimap: { enabled: true },
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      wordWrap: 'on',
+                      lineNumbers: 'on',
+                      folding: true,
+                      bracketPairColorization: { enabled: true },
+                      renderWhitespace: 'selection',
+                      cursorBlinking: 'smooth',
+                      cursorSmoothCaretAnimation: 'on',
+                      smoothScrolling: true,
+                      padding: { top: 10, bottom: 10 },
+                    }}
+                  />
+                )}
+              </div>
+            </div>
 
-        {/* Terminal */}
-        {showTerminal && (
-          <Terminal projectId={project._id} language={project.language} />
-        )}
+            {/* Right Panel */}
+            <div className="w-80 bg-dark-800 border-l border-dark-600 flex flex-col shrink-0">
+              {/* Panel Tabs */}
+              <div className="flex border-b border-dark-600 shrink-0">
+                <button
+                  onClick={() => setActivePanel('chat')}
+                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                    activePanel === 'chat'
+                      ? 'text-primary-500 border-b-2 border-primary-600'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Chat
+                </button>
+                <button
+                  onClick={() => setActivePanel('ai')}
+                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                    activePanel === 'ai'
+                      ? 'text-primary-500 border-b-2 border-primary-600'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  AI Assistant
+                </button>
+                <button
+                  onClick={() => setActivePanel('members')}
+                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                    activePanel === 'members'
+                      ? 'text-primary-500 border-b-2 border-primary-600'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Members
+                </button>
+              </div>
 
-        {/* Right Panel */}
-        <div className="w-80 bg-dark-800 border-l border-dark-600 flex flex-col">
-          {/* Panel Tabs */}
-          <div className="flex border-b border-dark-600">
-            <button
-              onClick={() => setActivePanel('chat')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activePanel === 'chat'
-                  ? 'text-primary-500 border-b-2 border-primary-600'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Chat
-            </button>
-            <button
-              onClick={() => setActivePanel('ai')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activePanel === 'ai'
-                  ? 'text-primary-500 border-b-2 border-primary-600'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              AI Assistant
-            </button>
-            <button
-              onClick={() => setActivePanel('members')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activePanel === 'members'
-                  ? 'text-primary-500 border-b-2 border-primary-600'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              Members
-            </button>
-          </div>
-
-          {/* Panel Content */}
-          <div className="flex-1 overflow-hidden">
-            {activePanel === 'chat' && (
-              <ChatPanel
-                projectId={project._id}
-                messages={chatMessages}
-                socket={socketRef.current}
-                currentUser={session?.user ?? null}
-              />
-            )}
-            {activePanel === 'ai' && (
-              <AIPanel
-                code={activeFile?.content || ''}
-                language={activeFile?.language || 'javascript'}
-                projectName={project.name}
-              />
-            )}
-            {activePanel === 'members' && (
-              <div className="p-4 space-y-3 overflow-y-auto h-full">
-                <h3 className="text-sm font-semibold text-white mb-3">
-                  Project Members ({project.members.length + 1})
-                </h3>
-                {/* Owner */}
-                <div className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
-                  {project.owner.image ? (
-                    <img src={project.owner.image} alt={project.owner.name} className="w-8 h-8 rounded-full" />
-                  ) : (
-                    <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
-                      {project.owner.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium text-white">{project.owner.name}</p>
-                    <p className="text-xs text-primary-500">Owner</p>
-                  </div>
-                </div>
-                {/* Members */}
-                {project.members
-                  .filter((m) => m._id !== project.owner._id)
-                  .map((member) => (
-                    <div key={member._id} className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
-                      {member.image ? (
-                        <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
+              {/* Panel Content */}
+              <div className="flex-1 overflow-hidden">
+                {activePanel === 'chat' && (
+                  <ChatPanel
+                    projectId={project._id}
+                    messages={chatMessages}
+                    socket={socketRef.current}
+                    currentUser={session?.user ?? null}
+                  />
+                )}
+                {activePanel === 'ai' && (
+                  <AIPanel
+                    code={activeFile?.content || ''}
+                    language={activeFile?.language || 'javascript'}
+                    projectName={project.name}
+                  />
+                )}
+                {activePanel === 'members' && (
+                  <div className="p-4 space-y-3 overflow-y-auto h-full">
+                    <h3 className="text-sm font-semibold text-white mb-3">
+                      Project Members ({project.members.length + 1})
+                    </h3>
+                    {/* Owner */}
+                    <div className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
+                      {project.owner.image ? (
+                        <img src={project.owner.image} alt={project.owner.name} className="w-8 h-8 rounded-full" />
                       ) : (
                         <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
-                          {member.name.charAt(0).toUpperCase()}
+                          {project.owner.name.charAt(0).toUpperCase()}
                         </div>
                       )}
                       <div>
-                        <p className="text-sm font-medium text-white">{member.name}</p>
-                        <p className="text-xs text-gray-500">Member</p>
+                        <p className="text-sm font-medium text-white">{project.owner.name}</p>
+                        <p className="text-xs text-primary-500">Owner</p>
                       </div>
                     </div>
-                  ))}
+                    {/* Members */}
+                    {project.members
+                      .filter((m) => m._id !== project.owner._id)
+                      .map((member) => (
+                        <div key={member._id} className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
+                          {member.image ? (
+                            <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
+                          ) : (
+                            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
+                              {member.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-sm font-medium text-white">{member.name}</p>
+                            <p className="text-xs text-gray-500">Member</p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
+
+          {/* Terminal at bottom (VS Code style) */}
+          {showTerminal && (
+            <Terminal projectId={project._id} language={project.language} />
+          )}
         </div>
       </div>
     </div>

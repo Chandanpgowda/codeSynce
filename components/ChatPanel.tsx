@@ -41,6 +41,7 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
       message: input.trim(),
       user: {
         _id: currentUser?.id,
+        id: currentUser?.id,
         name: currentUser?.name,
         image: currentUser?.image,
       },
@@ -50,8 +51,12 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
   };
 
   const formatTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '';
+    }
   };
 
   return (
@@ -66,14 +71,14 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
         )}
 
         {messages.map((msg, index) => {
-          const isOwn = msg.user._id === currentUser?.id;
+          const isOwn = msg.user?._id === currentUser?.id;
           return (
             <div key={index} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] ${isOwn ? 'text-right' : 'text-left'}`}>
                 <div className={`flex items-center gap-2 mb-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                   {!isOwn && (
                     <span className="text-xs font-medium text-gray-400">
-                      {msg.user.name}
+                      {msg.user?.name || 'Unknown'}
                     </span>
                   )}
                   <span className="text-xs text-gray-600">

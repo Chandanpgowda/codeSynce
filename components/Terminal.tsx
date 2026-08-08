@@ -23,13 +23,23 @@ export default function Terminal({ projectId, language }: TerminalProps) {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [cwd, setCwd] = useState('/');
+  const [cwd, setCwd] = useState('~');
   const [loading, setLoading] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     outputRef.current?.scrollTo(0, outputRef.current.scrollHeight);
   }, [output]);
+
+  // Format cwd to show just the project name
+  const formatCwd = (path: string) => {
+    if (!path || path === '/') return '~';
+    const parts = path.split(/[\\/]/).filter(Boolean);
+    if (parts.length === 0) return '~';
+    // Show last 2 parts for context
+    const lastParts = parts.slice(-2);
+    return '~/' + lastParts.join('/');
+  };
 
   const handleCommand = async (cmd: string) => {
     const trimmed = cmd.trim();
@@ -40,7 +50,7 @@ export default function Terminal({ projectId, language }: TerminalProps) {
     setHistoryIndex(-1);
 
     // Add command to output
-    setOutput((prev) => [...prev, { type: 'input', text: `${cwd} $ ${trimmed}` }]);
+    setOutput((prev) => [...prev, { type: 'input', text: `${formatCwd(cwd)} $ ${trimmed}` }]);
     setLoading(true);
 
     try {
@@ -72,7 +82,7 @@ export default function Terminal({ projectId, language }: TerminalProps) {
           } else {
             setOutput((prev) => [
               ...prev,
-              { type: line.startsWith('bash:') || line.startsWith('ls:') || line.startsWith('cd:') || line.startsWith('mkdir:') || line.startsWith('touch:') || line.startsWith('cat:') || line.startsWith('rm:') || line.startsWith('echo:') ? 'error' : 'output', text: line },
+              { type: line.startsWith('bash:') || line.startsWith('ls:') || line.startsWith('cd:') || line.startsWith('mkdir:') || line.startsWith('touch:') || line.startsWith('cat:') || line.startsWith('rm:') || line.startsWith('echo:') || line.startsWith("'") ? 'error' : 'output', text: line },
             ]);
           }
         });
@@ -107,13 +117,13 @@ export default function Terminal({ projectId, language }: TerminalProps) {
   };
 
   return (
-    <div className="bg-dark-900 border-t border-dark-600 flex flex-col h-56">
+    <div className="bg-dark-900 border-t border-dark-600 flex flex-col h-56 shrink-0">
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-dark-800 border-b border-dark-600">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-dark-800 border-b border-dark-600 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400 font-medium">TERMINAL</span>
           <span className="text-xs text-gray-600">|</span>
-          <span className="text-xs text-gray-500">{cwd}</span>
+          <span className="text-xs text-gray-500">{formatCwd(cwd)}</span>
         </div>
         <div className="flex items-center gap-2">
           {isOpen && (
@@ -165,7 +175,7 @@ export default function Terminal({ projectId, language }: TerminalProps) {
 
           {/* Input line */}
           <div className="flex items-center gap-1">
-            <span className="text-green-400">{cwd} $</span>
+            <span className="text-green-400">{formatCwd(cwd)} $</span>
             <input
               autoFocus
               value={input}

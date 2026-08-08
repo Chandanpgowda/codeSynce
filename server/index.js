@@ -27,6 +27,26 @@ if (MONGODB_URI) {
   });
 }
 
+// Project model
+const ProjectSchema = new mongoose.Schema({
+  name: String,
+  description: String,
+  owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  pendingRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  language: String,
+  tags: [String],
+  isPublic: Boolean,
+  files: mongoose.Schema.Types.Mixed,
+  chatMessages: [{
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    message: String,
+    timestamp: Date,
+  }],
+}, { timestamps: true });
+
+const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
+
 // Store active users per project
 const projectUsers = new Map();
 
@@ -61,13 +81,35 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Chat messages
-  socket.on('send-message', ({ projectId, message, user }) => {
-    io.to(`project:${projectId}`).emit('new-message', {
-      user,
+  // Chat messages - broadcast and persist to MongoDB
+  socket.on('send-message', async ({ projectId, message, user }) => {
+    const msg = {
+      user: {
+        _id: user?._id || user?.id,
+        name: user?.name,
+        image: user?.image,
+      },
       message,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    // Broadcast to all users in the project
+    io.to(`project:${projectId}`).emit('new-message', msg);
+
+    // Persist to MongoDB
+    try {
+      await Project.findByIdAndUpdate(projectId, {
+        $push: {
+          chatMessages: {
+            user: user?._id || user?.id,
+            message,
+            timestamp: new Date(),
+          },
+        },
+      });
+    } catch (err) {
+      console.error('Failed to save chat message:', err);
+    }
   });
 
   // Cursor position updates
