@@ -223,6 +223,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     if (!value || !project || !activeFile) return;
     if (isRemoteUpdateRef.current) return;
 
+    // Update local state so code is available for Run Code feature
+    setActiveFile((prev) => (prev ? { ...prev, content: value } : null));
+
     // Broadcast file change to other users
     socketRef.current?.emit('file-change', {
       projectId: project._id,
@@ -583,7 +586,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
           {/* Terminal at bottom (VS Code style) */}
           {showTerminal && (
-            <Terminal projectId={project._id} language={project.language} />
+            <Terminal
+              projectId={project._id}
+              language={project.language}
+              code={activeFile?.content || ''}
+              fileName={activeFile?.name || ''}
+              fileLanguage={activeFile?.language || ''}
+            />
           )}
         </div>
       </div>

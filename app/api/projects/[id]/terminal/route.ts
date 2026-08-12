@@ -27,7 +27,7 @@ function getWorkspaceDir(projectId: string): string {
 // Sync project files to the workspace directory
 async function syncFilesToWorkspace(projectId: string, files: any[]): Promise<string> {
   const workspaceDir = getWorkspaceDir(projectId);
-  
+
   // Clear existing files
   fs.rmSync(workspaceDir, { recursive: true, force: true });
   fs.mkdirSync(workspaceDir, { recursive: true });
@@ -50,6 +50,124 @@ async function syncFilesToWorkspace(projectId: string, files: any[]): Promise<st
 
   writeFiles(files, workspaceDir);
   return workspaceDir;
+}
+
+// Map file extensions / language names to run commands
+function getRunCommand(fileName: string, language: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const lang = language.toLowerCase();
+
+  // JavaScript / TypeScript
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(ext) || lang.includes('javascript') || lang.includes('typescript')) {
+    return `node "${fileName}"`;
+  }
+
+  // Python
+  if (ext === 'py' || lang.includes('python')) {
+    return `python "${fileName}"`;
+  }
+
+  // C
+  if (ext === 'c' || lang === 'c') {
+    if (process.platform === 'win32') {
+      return `gcc "${fileName}" -o output.exe 2>&1 && "output.exe" 2>&1`;
+    }
+    return `gcc "${fileName}" -o output.out 2>&1 && "./output.out" 2>&1`;
+  }
+
+  // C++
+  if (['cpp', 'cc', 'cxx', 'c++', 'hpp'].includes(ext) || lang.includes('c++') || lang === 'cpp') {
+    if (process.platform === 'win32') {
+      return `g++ "${fileName}" -o output.exe 2>&1 && "output.exe" 2>&1`;
+    }
+    return `g++ "${fileName}" -o output.out 2>&1 && "./output.out" 2>&1`;
+  }
+
+  // C#
+  if (ext === 'cs' || lang.includes('csharp') || lang === 'c#') {
+    return `dotnet script "${fileName}" 2>&1 || (csc "/out:output.exe" "${fileName}" 2>&1 && "output.exe" 2>&1)`;
+  }
+
+  // Go
+  if (ext === 'go' || lang === 'go') {
+    return `go run "${fileName}" 2>&1`;
+  }
+
+  // Rust
+  if (ext === 'rs' || lang === 'rust') {
+    return `rustc "${fileName}" -o output 2>&1 && "./output" 2>&1`;
+  }
+
+  // Java
+  if (ext === 'java' || lang === 'java') {
+    if (process.platform === 'win32') {
+      const baseName = fileName.replace(/\\.[^/.]+$/, '');
+      return `javac "${fileName}" 2>&1 && java "${baseName}" 2>&1`;
+    }
+    return `javac "${fileName}" 2>&1 && java "$(basename "${fileName}" .java)" 2>&1`;
+  }
+
+  // PHP
+  if (ext === 'php' || lang === 'php') {
+    return `php "${fileName}" 2>&1`;
+  }
+
+  // Ruby
+  if (ext === 'rb' || lang === 'ruby') {
+    return `ruby "${fileName}" 2>&1`;
+  }
+
+  // Bash / Shell
+  if (['sh', 'bash', 'zsh'].includes(ext) || lang.includes('shell') || lang === 'bash' || lang === 'sh') {
+    return `bash "${fileName}" 2>&1`;
+  }
+
+  // HTML
+  if (ext === 'html' || lang === 'html') {
+    return `echo "Open this file in a browser to view: ${fileName}"`;
+  }
+
+  // SQL
+  if (ext === 'sql' || lang === 'sql') {
+    return `echo "SQL query ready to execute on your database."`;
+  }
+
+  // Default
+  return `echo "Unsupported language for auto-run: ${lang}. Use the terminal manually."`;
+}
+
+// Get the file extension for a language
+function getFileExtension(lang: string): string {
+  const map: Record<string, string> = {
+    javascript: 'js',
+    typescript: 'ts',
+    python: 'py',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    csharp: 'cs',
+    go: 'go',
+    rust: 'rs',
+    php: 'php',
+    ruby: 'rb',
+    bash: 'sh',
+    shell: 'sh',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    xml: 'xml',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sql: 'sql',
+    lua: 'lua',
+    kotlin: 'kt',
+    swift: 'swift',
+    dart: 'dart',
+    r: 'r',
+    scala: 'scala',
+    haskell: 'hs',
+  };
+  return map[lang.toLowerCase()] || lang.toLowerCase();
 }
 
 export async function POST(
@@ -76,14 +194,72 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { command } = body;
-    if (!command || typeof command !== 'string') {
-      return NextResponse.json({ error: 'Command is required' }, { status: 400 });
-    }
 
     // Get or create workspace directory
     let cwd = projectCwds.get(params.id) || await syncFilesToWorkspace(params.id, project.files || []);
     projectCwds.set(params.id, cwd);
+
+    // Handle run code request (doesn't require command field)
+    if (body.runCode && body.code) {
+      const code: string = body.code;
+      const inputFileName: string = body.fileName || '';
+      const inputFileLanguage: string = body.fileLanguage || project.language || '';
+
+      // Determine filename
+      let filename = inputFileName || `main.${getFileExtension(inputFileLanguage)}`;
+
+      // Write code to workspace
+      const filePath = path.join(cwd, filename);
+      fs.writeFileSync(filePath, code);
+
+      // Determine run command
+      const runCommand = getRunCommand(filename, inputFileLanguage || project.language);
+
+      // Execute the run command
+      try {
+        const { stdout, stderr } = await execAsync(runCommand, {
+          cwd,
+          shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/bash',
+          timeout: 10000,
+          maxBuffer: 1024 * 1024,
+          env: {
+            ...process.env,
+            PATH: process.env.PATH,
+          },
+        });
+
+        const output: string[] = [];
+        if (stdout) {
+          output.push(...stdout.split('\n').filter((line: string) => line.length > 0));
+        }
+        if (stderr) {
+          output.push(...stderr.split('\n').filter((line: string) => line.length > 0));
+        }
+        if (output.length === 0) {
+          output.push('');
+        }
+
+        return NextResponse.json({ output, cwd: cwd.replace(/\\/g, '/') });
+      } catch (execError: any) {
+        const output: string[] = [];
+        if (execError.stdout) {
+          output.push(...execError.stdout.split('\n').filter((line: string) => line.length > 0));
+        }
+        if (execError.stderr) {
+          output.push(...execError.stderr.split('\n').filter((line: string) => line.length > 0));
+        }
+        if (output.length === 0) {
+          output.push(`Error: Failed to execute code`);
+        }
+        return NextResponse.json({ output, cwd: cwd.replace(/\\/g, '/') });
+      }
+    }
+
+    // For regular commands, command is required
+    const { command } = body;
+    if (!command || typeof command !== 'string') {
+      return NextResponse.json({ error: 'Command is required' }, { status: 400 });
+    }
 
     // Handle cd command specially to track directory
     const trimmed = command.trim();

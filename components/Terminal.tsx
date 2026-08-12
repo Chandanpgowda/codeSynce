@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 interface TerminalProps {
   projectId: string;
   language: string;
+  code?: string;
+  fileName?: string;
+  fileLanguage?: string;
 }
 
 interface TerminalLine {
@@ -12,7 +15,115 @@ interface TerminalLine {
   text: string;
 }
 
-export default function Terminal({ projectId, language }: TerminalProps) {
+// Map file extensions / language names to run commands
+const getRunCommand = (fileName: string, language: string): string | null => {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  const lang = language.toLowerCase();
+
+  // JavaScript / TypeScript
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(ext) || lang.includes('javascript') || lang.includes('typescript')) {
+    return `node "${fileName}"`;
+  }
+
+  // Python
+  if (ext === 'py' || lang.includes('python')) {
+    return `python "${fileName}"`;
+  }
+
+  // C
+  if (ext === 'c' || lang === 'c') {
+    return `gcc "${fileName}" -o output.out 2>&1 && "./output.out" 2>&1`;
+  }
+
+  // C++
+  if (['cpp', 'cc', 'cxx', 'c++', 'hpp'].includes(ext) || lang.includes('c++') || lang === 'cpp') {
+    return `g++ "${fileName}" -o output.out 2>&1 && "./output.out" 2>&1`;
+  }
+
+  // C#
+  if (ext === 'cs' || lang.includes('csharp') || lang === 'c#') {
+    return `dotnet script "${fileName}" 2>&1 || (csc "/out:output.exe" "${fileName}" 2>&1 && "output.exe" 2>&1)`;
+  }
+
+  // Go
+  if (ext === 'go' || lang === 'go') {
+    return `go run "${fileName}" 2>&1`;
+  }
+
+  // Rust
+  if (ext === 'rs' || lang === 'rust') {
+    return `rustc "${fileName}" -o output 2>&1 && "./output" 2>&1`;
+  }
+
+  // Java
+  if (ext === 'java' || lang === 'java') {
+    return `java "${fileName}" 2>&1`;
+  }
+
+  // PHP
+  if (ext === 'php' || lang === 'php') {
+    return `php "${fileName}" 2>&1`;
+  }
+
+  // Ruby
+  if (ext === 'rb' || lang === 'ruby') {
+    return `ruby "${fileName}" 2>&1`;
+  }
+
+  // Bash / Shell
+  if (['sh', 'bash', 'zsh'].includes(ext) || lang.includes('shell') || lang === 'bash' || lang === 'sh') {
+    return `bash "${fileName}" 2>&1`;
+  }
+
+  // HTML (just open / serve)
+  if (ext === 'html' || lang === 'html') {
+    return `echo "Open this file in a browser to view: ${fileName}"`;
+  }
+
+  // SQL (can't run standalone)
+  if (ext === 'sql' || lang === 'sql') {
+    return `echo "SQL query ready to execute on your database."`;
+  }
+
+  // Default: echo unsupported
+  return `echo "Unsupported language for auto-run: ${lang}. Use the terminal manually."`;
+};
+
+// Get the file extension for writing
+const getFileExtension = (lang: string): string => {
+  const map: Record<string, string> = {
+    javascript: 'js',
+    typescript: 'ts',
+    python: 'py',
+    java: 'java',
+    c: 'c',
+    cpp: 'cpp',
+    csharp: 'cs',
+    go: 'go',
+    rust: 'rs',
+    php: 'php',
+    ruby: 'rb',
+    bash: 'sh',
+    shell: 'sh',
+    html: 'html',
+    css: 'css',
+    json: 'json',
+    xml: 'xml',
+    yaml: 'yaml',
+    yml: 'yaml',
+    sql: 'sql',
+    lua: 'lua',
+    kotlin: 'kt',
+    swift: 'swift',
+    dart: 'dart',
+    r: 'r',
+    scala: 'scala',
+    haskell: 'hs',
+  };
+  return map[lang.toLowerCase()] || lang.toLowerCase();
+};
+
+export default function Terminal({ projectId, language, code, fileName, fileLanguage }: TerminalProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [output, setOutput] = useState<TerminalLine[]>([
     { type: 'output', text: `CodeSynce Terminal v1.0.0` },
@@ -25,6 +136,7 @@ export default function Terminal({ projectId, language }: TerminalProps) {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [cwd, setCwd] = useState('~');
   const [loading, setLoading] = useState(false);
+  const [runningCode, setRunningCode] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,7 +194,7 @@ export default function Terminal({ projectId, language }: TerminalProps) {
           } else {
             setOutput((prev) => [
               ...prev,
-              { type: line.startsWith('bash:') || line.startsWith('ls:') || line.startsWith('cd:') || line.startsWith('mkdir:') || line.startsWith('touch:') || line.startsWith('cat:') || line.startsWith('rm:') || line.startsWith('echo:') || line.startsWith("'") ? 'error' : 'output', text: line },
+              { type: line.startsWith('bash:') || line.startsWith('ls:') || line.startsWith('cd:') || line.startsWith('mkdir:') || line.startsWith('touch:') || line.startsWith('cat:') || line.startsWith('rm:') || line.startsWith('echo:') || line.startsWith("'") || line.startsWith('make:') || line.startsWith('g++:') || line.startsWith('gcc:') || line.startsWith('error:') ? 'error' : 'output', text: line },
             ]);
           }
         });
@@ -96,6 +208,62 @@ export default function Terminal({ projectId, language }: TerminalProps) {
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunCode = async () => {
+    if (!code || !fileName) {
+      setOutput((prev) => [
+        ...prev,
+        { type: 'error', text: 'No code to run. Open a file first.' },
+        { type: 'output', text: '' },
+      ]);
+      return;
+    }
+
+    setRunningCode(true);
+    setOutput((prev) => [
+      ...prev,
+      { type: 'input', text: `${formatCwd(cwd)} $ ▶ Run Code (${fileLanguage || language})` },
+    ]);
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/terminal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, fileName, fileLanguage, runCode: true }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setOutput((prev) => [
+          ...prev,
+          { type: 'error', text: data.error || 'Failed to run code' },
+          { type: 'output', text: '' },
+        ]);
+        return;
+      }
+
+      if (data.cwd) setCwd(data.cwd);
+
+      if (data.output && Array.isArray(data.output)) {
+        data.output.forEach((line: string) => {
+          setOutput((prev) => [
+            ...prev,
+            { type: 'output', text: line },
+          ]);
+        });
+        setOutput((prev) => [...prev, { type: 'output', text: '' }]);
+      }
+    } catch (err) {
+      setOutput((prev) => [
+        ...prev,
+        { type: 'error', text: 'Failed to run code' },
+        { type: 'output', text: '' },
+      ]);
+    } finally {
+      setRunningCode(false);
     }
   };
 
@@ -126,6 +294,22 @@ export default function Terminal({ projectId, language }: TerminalProps) {
           <span className="text-xs text-gray-500">{formatCwd(cwd)}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Run Code Button */}
+          <button
+            onClick={handleRunCode}
+            disabled={runningCode || !code}
+            className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+              runningCode || !code
+                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+            }`}
+            title="Run code (Ctrl+Enter)"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v10a2 2 0 002 2h4l5 5V5a2 2 0 00-2-2H7a2 2 0 00-2 2z" />
+            </svg>
+            {runningCode ? 'Running...' : 'Run Code'}
+          </button>
           {isOpen && (
             <button
               onClick={() => setOutput([])}

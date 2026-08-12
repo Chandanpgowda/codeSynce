@@ -11,6 +11,7 @@ interface AIPanelProps {
 interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
+  provider?: 'gemini';
 }
 
 export default function AIPanel({ code, language, projectName }: AIPanelProps) {
@@ -47,7 +48,10 @@ export default function AIPanel({ code, language, projectName }: AIPanelProps) {
       const data = await res.json();
 
       if (res.ok) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: data.response }]);
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: data.response, provider: 'gemini' },
+        ]);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -93,6 +97,13 @@ export default function AIPanel({ code, language, projectName }: AIPanelProps) {
                   : 'bg-dark-700 text-gray-200 rounded-bl-none'
               }`}
             >
+              {msg.role === 'assistant' && msg.provider && (
+                <div className="mb-1">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-500/20 text-blue-400">
+                    Google Gemini
+                  </span>
+                </div>
+              )}
               {msg.content}
             </div>
           </div>
