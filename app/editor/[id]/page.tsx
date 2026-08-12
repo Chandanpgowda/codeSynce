@@ -151,7 +151,11 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (!project || !isMember) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001');
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
     socketRef.current = socket;
 
     socket.emit('join-project', {

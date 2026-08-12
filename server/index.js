@@ -12,9 +12,14 @@ const server = http.createServer((req, res) => {
 
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: process.env.NODE_ENV === 'production'
+      ? process.env.SOCKET_CORS_ORIGIN || 'http://localhost:3000'
+      : 'http://localhost:3000',
     methods: ['GET', 'POST'],
+    credentials: true,
   },
+  maxHttpBufferSize: 1e6, // 1MB limit
+  transports: ['websocket', 'polling'],
 });
 
 // MongoDB connection
@@ -82,14 +87,34 @@ io.on('connection', (socket) => {
   });
 
   // Chat messages - broadcast and persist to MongoDB
-  socket.on('send-message', async ({ projectId, message, user }) => {
+  socket.on('send-message', async (data) => {
+    // Validate input
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    const { projectId, message, user } = data;
+
+    // Validate required fields
+    if (!projectId || !message || !user) {
+      console.error('Invalid message data received');
+      return;
+    }
+
+    // Sanitize message
+    const sanitizedMessage = String(message).trim().slice(0, 5000); // Limit message length
+
+    if (!sanitizedMessage) {
+      return;
+    }
+
     const msg = {
       user: {
         _id: user?._id || user?.id,
         name: user?.name,
         image: user?.image,
       },
-      message,
+      message: sanitizedMessage,
       timestamp: new Date().toISOString(),
     };
 
@@ -102,7 +127,7 @@ io.on('connection', (socket) => {
         $push: {
           chatMessages: {
             user: user?._id || user?.id,
-            message,
+            message: sanitizedMessage,
             timestamp: new Date(),
           },
         },
@@ -113,20 +138,78 @@ io.on('connection', (socket) => {
   });
 
   // Cursor position updates
-  socket.on('cursor-update', ({ projectId, position, user }) => {
-    socket.to(`project:${projectId}`).emit('cursor-moved', {
-      user,
-      position,
+  socket.on('cursor-update', (data) => {
+    // Validate input
+    if (!data || !data.projectId || !data.position || !data.user) {
+      return;
+    }
+
+    socket.to(`project:${data.projectId}`).emit('cursor-moved', {
+      user: data.user,
+      position: data.position,
     });
   });
 
   // File changes
-  socket.on('file-change', ({ projectId, file, content }) => {
-    socket.to(`project:${projectId}`).emit('file-updated', {
-      file,
-      content,
+  socket.on('file-change', (data) => {
+    // Validate input
+    if (!data || !data.projectId || !data.file || typeof data.content !== 'string') {
+      return;
+    }
+
+    // Limit content size (10MB)
+    if (data.content.length > 10 * 1024 * 1024) {
+      console.error('File content too large');
+      return;
+    }
+
+    socket.to(`project:${data.projectId}`).emit('file-updated', {
+      file: data.file,
+      content: data.content,
       user: socket.data.user,
     });
+  });
+
+  // Add rate limiting for messages
+  const messageRateLimit = new Map();
+
+  socket.on('send-message', async (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user._id || data.user.id;
+    const now = Date.now();
+    const key = `${data.projectId}:${userId}`;
+
+    // Check rate limit (max 10 messages per 5 seconds)
+    if (messageRateLimit.has(key)) {
+    const timestamps = messageRateLimit.get(key);
+    const recentMessages = timestamps.filter((ts) => now - ts < 5000);
+
+      if (recentMessages.length >= 10) {
+        console.error('Rate limit exceeded for user:', userId);
+        return;
+      }
+
+      timestamps.push(now);
+      messageRateLimit.set(key, timestamps);
+    } else {
+      messageRateLimit.set(key, [now]);
+    }
+
+    // Clean up old entries
+    setTimeout(() => {
+      if (messageRateLimit.has(key)) {
+        const timestamps = messageRateLimit.get(key);
+        const filtered = timestamps.filter((ts) => now - ts < 5000);
+        if (filtered.length === 0) {
+          messageRateLimit.delete(key);
+        } else {
+          messageRateLimit.set(key, filtered);
+        }
+      }
+    }, 6000);
   });
 
   socket.on('disconnect', () => {
@@ -139,6 +222,11 @@ io.on('connection', (socket) => {
       });
     }
     console.log('Client disconnected:', socket.id);
+  });
+
+  // Handle invalid events
+  socket.on('invalid-event', () => {
+    console.warn('Invalid event received from socket:', socket.id);
   });
 });
 
