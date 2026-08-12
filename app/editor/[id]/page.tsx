@@ -82,6 +82,8 @@ function collectFiles(items: ProjectFile[]): ProjectFile[] {
   return result;
 }
 
+export const dynamic = 'force-dynamic';
+
 export default function EditorPage({ params }: { params: { id: string } }) {
   const { data: session, status } = useSession();
   const router = useRouter();
