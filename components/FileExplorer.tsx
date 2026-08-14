@@ -39,9 +39,29 @@ const FILE_ICONS: Record<string, string> = {
   plaintext: '📄',
 };
 
+const LANGUAGE_ICONS: Record<string, string> = {
+  javascript: '📘',
+  typescript: '📘',
+  python: '🐍',
+  java: '☕',
+  c: '📁',
+  cpp: '📁',
+  csharp: '📁',
+  go: '📁',
+  rust: '📁',
+  ruby: '📁',
+  php: '📁',
+  html: '🌐',
+  css: '🎨',
+  json: '📋',
+  sql: '🗄️',
+  markdown: '📝',
+  plaintext: '📄',
+};
+
 export default function FileExplorer({ projectId, files, activeFile, onFileSelect, onFilesChange }: FileExplorerProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -52,6 +72,8 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
   const [newItemType, setNewItemType] = useState<'file' | 'folder'>('file');
   const [newItemName, setNewItemName] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [renaming, setRename] = useState<string | null>(null);
+  const [renameItem, setRenameItem] = useState<{ path: string; oldName: string } | null>(null);
 
   const getFileIcon = (file: ProjectFile) => {
     if (file.type === 'folder') return '📁';
@@ -124,14 +146,44 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
     }
   };
 
+  const handleRename = async (path: string, oldName: string) => {
+    const newName = prompt(`Rename "${oldName}" to:`, newItemName || '');
+    if (newName === null || newName.trim() === '') {
+      setRename(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/files/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, oldName, newName: newName.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to rename');
+        setRename(null);
+        return;
+      }
+
+      setRename(null);
+      onFilesChange();
+    } catch (error) {
+      alert('Failed to rename');
+      setRename(null);
+    }
+  };
+
   const renderTree = (items: ProjectFile[], level: number) => {
     return items.map((item) => {
       const isFolder = item.type === 'folder';
       const isExpanded = expandedFolders.has(item.path);
       const isActive = activeFile?.path === item.path;
+      const isRenaming = renameItem?.path === item.path && item.name === renameItem.oldName;
 
       return (
-        <div key={item.path}>
+        <div key={item.path} className="relative">
           <div
             className={`group flex items-center gap-1 px-1 py-1 text-sm cursor-pointer transition-colors ${
               isActive
@@ -161,8 +213,37 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
             </span>
             <span className="truncate flex-1">{item.name}</span>
 
-            {/* Hover actions */}
-            {!isFolder && (
+            {/* Rename overlay */}
+            {isRenaming && (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <input
+                  autoFocus
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRename(item.path, renameItem.oldName);
+                    if (e.key === 'Escape') setRename(null);
+                  }}
+                  placeholder="rename"
+                  className="bg-dark-900 border border-primary-600 rounded text-white text-xs px-2 py-0.5 outline-none"
+                />
+                <button
+                  onClick={() => handleRename(item.path, renameItem.oldName)}
+                  className="text-green-500 text-xs hover:text-green-400"
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={() => setRename(null)}
+                  className="text-red-500 text-xs hover:text-red-400"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Hover actions for files */}
+            {!isFolder && !isRenaming && (
               <div className="hidden group-hover:flex items-center gap-1">
                 <button
                   onClick={(e) => {
@@ -175,43 +256,43 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
                 </button>
               </div>
             )}
-          </div>
 
-          {isFolder && isExpanded && (
-            <div>
-              {renderTree(item.children || [], level + 1)}
-              {creatingIn === item.path && (
-                <div className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}>
-                  <span className="text-xs">
-                    {newItemType === 'folder' ? '📁' : '📄'}
-                  </span>
-                  <input
-                    autoFocus
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleCreate(item.path);
-                      if (e.key === 'Escape') setCreatingIn(null);
-                    }}
-                    placeholder={newItemType === 'folder' ? 'folder name' : 'file.ts'}
-                    className="bg-dark-900 border border-primary-600 rounded text-white text-xs px-2 py-0.5 flex-1 outline-none"
-                  />
-                  <button
-                    onClick={() => handleCreate(item.path)}
-                    className="text-green-500 text-xs hover:text-green-400"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    onClick={() => setCreatingIn(null)}
-                    className="text-red-500 text-xs hover:text-red-400"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+            {isFolder && isExpanded && (
+              <div>
+                {renderTree(item.children || [], level + 1)}
+                {creatingIn === item.path && (
+                  <div className="flex items-center gap-1 px-2 py-1" style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}>
+                    <span className="text-xs">
+                      {newItemType === 'folder' ? '📁' : '📄'}
+                    </span>
+                    <input
+                      autoFocus
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleCreate(item.path);
+                        if (e.key === 'Escape') setCreatingIn(null);
+                      }}
+                      placeholder={newItemType === 'folder' ? 'folder name' : 'file.ts'}
+                      className="bg-dark-900 border border-primary-600 rounded text-white text-xs px-2 py-0.5 flex-1 outline-none"
+                    />
+                    <button
+                      onClick={() => handleCreate(item.path)}
+                      className="text-green-500 text-xs hover:text-green-400"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={() => setCreatingIn(null)}
+                      className="text-red-500 text-xs hover:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       );
     });
