@@ -52,107 +52,100 @@ async function syncFilesToWorkspace(projectId: string, files: any[]): Promise<st
   return workspaceDir;
 }
 
-// Map file extensions / language names to Piston API language
-function getPistonLanguage(fileName: string, language: string): { language: string; version: string } | null {
+// Map file extensions / language names to Wandbox compiler names
+function getWandboxCompiler(fileName: string, language: string): string | null {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   const lang = language.toLowerCase();
 
   // JavaScript / TypeScript
-  if (['js', 'jsx', 'mjs', 'cjs'].includes(ext) || lang.includes('javascript') || lang.includes('typescript')) {
-    return { language: 'javascript', version: '18.15.0' };
+  if (['js', 'jsx', 'mjs', 'cjs'].includes(ext) || lang.includes('javascript')) {
+    return 'nodejs-18.20.4';
+  }
+  if (lang.includes('typescript')) {
+    return 'typescript-5.6.2';
   }
 
   // Python
   if (ext === 'py' || lang.includes('python')) {
-    return { language: 'python', version: '3.10.0' };
+    return 'cpython-3.10.15';
   }
 
   // C
   if (ext === 'c' || lang === 'c') {
-    return { language: 'c', version: '10.2.0' };
+    return 'gcc-13.2.0-c';
   }
 
   // C++
   if (['cpp', 'cc', 'cxx', 'c++', 'hpp'].includes(ext) || lang.includes('c++') || lang === 'cpp') {
-    return { language: 'c++', version: '10.2.0' };
+    return 'gcc-13.2.0';
   }
 
   // C#
   if (ext === 'cs' || lang.includes('csharp') || lang === 'c#') {
-    return { language: 'csharp', version: '6.12.0' };
+    return 'mono-6.12.0.199';
   }
 
   // Go
   if (ext === 'go' || lang === 'go') {
-    return { language: 'go', version: '1.16.2' };
+    return 'go-1.23.2';
   }
 
   // Rust
   if (ext === 'rs' || lang === 'rust') {
-    return { language: 'rust', version: '1.68.2' };
+    return 'rust-1.82.0';
   }
 
   // Java
   if (ext === 'java' || lang === 'java') {
-    return { language: 'java', version: '15.0.2' };
+    return 'openjdk-jdk-21+35';
   }
 
   // PHP
   if (ext === 'php' || lang === 'php') {
-    return { language: 'php', version: '8.2.3' };
+    return 'php-8.3.12';
   }
 
   // Ruby
   if (ext === 'rb' || lang === 'ruby') {
-    return { language: 'ruby', version: '3.0.1' };
+    return 'ruby-3.3.11';
   }
 
   // Bash / Shell
   if (['sh', 'bash', 'zsh'].includes(ext) || lang.includes('shell') || lang === 'bash' || lang === 'sh') {
-    return { language: 'bash', version: '5.2.0' };
+    return 'bash';
   }
 
   // Lua
   if (ext === 'lua' || lang === 'lua') {
-    return { language: 'lua', version: '5.4.4' };
-  }
-
-  // Kotlin
-  if (ext === 'kt' || lang === 'kotlin') {
-    return { language: 'kotlin', version: '1.8.20' };
+    return 'lua-5.4.7';
   }
 
   // Swift
   if (ext === 'swift' || lang === 'swift') {
-    return { language: 'swift', version: '5.3.3' };
-  }
-
-  // Dart
-  if (ext === 'dart' || lang === 'dart') {
-    return { language: 'dart', version: '3.1.0' };
+    return 'swift-6.0.1';
   }
 
   // R
   if (ext === 'r' || lang === 'r') {
-    return { language: 'r', version: '4.2.1' };
+    return 'r-4.4.1';
   }
 
   // Scala
   if (ext === 'scala' || lang === 'scala') {
-    return { language: 'scala', version: '3.2.2' };
+    return 'scala-3.5.1';
   }
 
   // Haskell
   if (ext === 'hs' || lang === 'haskell') {
-    return { language: 'haskell', version: '9.0.1' };
+    return 'ghc-9.10.1';
   }
 
   return null;
 }
 
-// Execute code using Piston API (works on Vercel serverless)
-async function executeWithPiston(code: string, fileName: string, language: string): Promise<string[]> {
-  const pistonLang = getPistonLanguage(fileName, language);
+// Execute code using Wandbox API (works on Vercel serverless)
+async function executeWithWandbox(code: string, fileName: string, language: string): Promise<string[]> {
+  const compiler = getWandboxCompiler(fileName, language);
 
   // HTML - just show a message
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -165,29 +158,21 @@ async function executeWithPiston(code: string, fileName: string, language: strin
     return [`SQL query ready to execute on your database.`];
   }
 
-  if (!pistonLang) {
+  if (!compiler) {
     return [`Unsupported language for auto-run: ${language}. Use the terminal manually.`];
   }
 
   try {
-    const response = await fetch('https://emkc.org/api/v2/piston/execute', {
+    const response = await fetch('https://wandbox.org/api/compile.json', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        language: pistonLang.language,
-        version: pistonLang.version,
-        files: [
-          {
-            name: fileName,
-            content: code,
-          },
-        ],
+        code: code,
+        compiler: compiler,
+        options: '',
         stdin: '',
-        args: [],
-        compile_timeout: 10000,
-        run_timeout: 10000,
       }),
     });
 
@@ -199,27 +184,35 @@ async function executeWithPiston(code: string, fileName: string, language: strin
 
     const output: string[] = [];
 
-    // Compile output (for compiled languages like Java, C, C++)
-    if (result.compile && result.compile.output) {
-      const compileOutput = result.compile.output.trim();
-      if (compileOutput) {
-        output.push(...compileOutput.split('\n').filter((line: string) => line.length > 0));
+    // Compiler output (for compiled languages like Java, C, C++)
+    if (result.compiler_output) {
+      const compilerOutput = result.compiler_output.trim();
+      if (compilerOutput) {
+        output.push(...compilerOutput.split('\n').filter((line: string) => line.length > 0));
       }
     }
 
-    // Run output
-    if (result.run && result.run.output) {
-      const runOutput = result.run.output.trim();
-      if (runOutput) {
-        output.push(...runOutput.split('\n').filter((line: string) => line.length > 0));
+    // Compiler error
+    if (result.compiler_error) {
+      const compilerError = result.compiler_error.trim();
+      if (compilerError) {
+        output.push(...compilerError.split('\n').filter((line: string) => line.length > 0));
       }
     }
 
-    // If there's a run error (stderr)
-    if (result.run && result.run.stderr) {
-      const stderr = result.run.stderr.trim();
-      if (stderr) {
-        output.push(...stderr.split('\n').filter((line: string) => line.length > 0));
+    // Program output
+    if (result.program_output) {
+      const programOutput = result.program_output.trim();
+      if (programOutput) {
+        output.push(...programOutput.split('\n').filter((line: string) => line.length > 0));
+      }
+    }
+
+    // Program error
+    if (result.program_error) {
+      const programError = result.program_error.trim();
+      if (programError) {
+        output.push(...programError.split('\n').filter((line: string) => line.length > 0));
       }
     }
 
@@ -309,8 +302,8 @@ export async function POST(
       const filePath = path.join(cwd, filename);
       fs.writeFileSync(filePath, code);
 
-      // Execute using Piston API (works on Vercel serverless)
-      const output = await executeWithPiston(code, filename, inputFileLanguage || project.language);
+      // Execute using Wandbox API (works on Vercel serverless)
+      const output = await executeWithWandbox(code, filename, inputFileLanguage || project.language);
 
       return NextResponse.json({ output, cwd: cwd.replace(/\\/g, '/') });
     }
@@ -384,7 +377,15 @@ export async function POST(
         output.push(...execError.stderr.split('\n').filter((line: string) => line.length > 0));
       }
       if (output.length === 0) {
-        output.push(`bash: ${trimmed}: command not found`);
+        const errMsg = execError.message || '';
+        if (errMsg.includes('command not found') || errMsg.includes('not recognized')) {
+          const cmd = trimmed.split(' ')[0];
+          output.push(`bash: ${cmd}: command not found`);
+          output.push(`Note: This environment only supports basic commands (ls, cd, echo, node, npm, cat, etc.)`);
+          output.push(`For running code, use the "Run Code" button instead.`);
+        } else {
+          output.push(`bash: ${trimmed}: command not found`);
+        }
       }
       return NextResponse.json({ output, cwd: cwd.replace(/\\/g, '/') });
     }
