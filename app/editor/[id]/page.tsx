@@ -153,7 +153,24 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (!project || !isMember) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
+    // NEXT_PUBLIC_* vars are inlined at BUILD time (not runtime).
+    // If missing, never fall back to localhost in production - that produces
+    // an unreachable URL and misleads debugging. Fall back to same-origin so
+    // the failure is visible, and log a clear error.
+    const socketUrl =
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : undefined);
+
+    if (!process.env.NEXT_PUBLIC_SOCKET_URL) {
+      console.error(
+        '[CodeSynce] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
+          '  Add it in Vercel: Settings -> Environment Variables -> NEXT_PUBLIC_SOCKET_URL\n' +
+          '  Point it to your Railway socket server (e.g. https://your-app.up.railway.app).\n' +
+          '  Then redeploy - env changes require a fresh build.'
+      );
+    }
+
+    const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

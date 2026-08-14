@@ -281,11 +281,23 @@ Your website is now LIVE on the internet!
 
 ## Common Problems & Solutions
 
+### Problem 0: "DEPLOYMENT_NOT_FOUND" (404) on Vercel
+
+**What it means:** You requested a URL for a deployment that doesn't exist -- the deployment was deleted, the URL has a typo, or you're using an old preview URL (every push creates a new preview deployment; the previous one gets cleaned up).
+
+**Solution -- check these in order:**
+1. **Use the right URL.** Your production URL is the one you named at import, e.g. `https://codesynce.vercel.app` -- NOT a preview URL like `https://codesynce-abc123xyz.vercel.app`. Preview deployments are temporary and get deleted.
+2. **Check the Vercel dashboard.** Open Vercel, go to your project, then the "Deployments" tab. Confirm the deployment exists and is marked "Ready" (not "Error" or "Canceled"). Copy the URL from there -- don't type it by hand.
+3. **Update `NEXTAUTH_URL` in Vercel** to the exact production URL. If OAuth or NextAuth redirects to an old URL, you'll land on a deleted deployment.
+4. **Be careful bookmarking/sharing.** If someone you shared with hit a stale link, they'll see this error. Use the production domain, not a preview domain.
+5. **Re-connect the project if the integration was deleted.** If a GitHub push never triggered a deploy, the Vercel project may have been deleted. Go to Vercel Dashboard, "Add New", then "Project", and import your GitHub repo again.
+
 ### Problem 1: "Socket connection failed"
 **Solution:**
 - Double-check `NEXT_PUBLIC_SOCKET_URL` in Vercel
 - Make sure it matches your Railway URL exactly
 - Check Railway logs for errors
+- **Important:** `NEXT_PUBLIC_*` variables are **baked in at build time**. Changing them in Vercel saves the new value, but you must click **Redeploy** (or make a new commit) for the change to take effect.
 
 ### Problem 2: "MongoDB connection error"
 **Solution:**
