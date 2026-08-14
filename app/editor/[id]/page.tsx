@@ -104,6 +104,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const isRemoteUpdateRef = useRef(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedContentRef = useRef<Record<string, string>>({});
 
   // Load project
   useEffect(() => {
@@ -242,6 +244,36 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     });
   };
 
+  // Save file content to the database (debounced)
+  const saveFile = useCallback((filePath: string, content: string) => {
+    if (!project) return;
+
+    // Skip if content hasn't changed since last save
+    if (lastSavedContentRef.current[filePath] === content) return;
+
+    // Clear any existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce save by 800ms
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/projects/${project._id}/files`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath, content }),
+        });
+
+        if (res.ok) {
+          lastSavedContentRef.current[filePath] = content;
+        }
+      } catch (err) {
+        console.error('Failed to save file:', err);
+      }
+    }, 800);
+  }, [project]);
+
   const handleEditorChange = (value: string | undefined) => {
     if (!value || !project || !activeFile) return;
     if (isRemoteUpdateRef.current) return;
@@ -255,6 +287,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       file: activeFile.path,
       content: value,
     });
+
+    // Auto-save to database so code persists across sessions
+    saveFile(activeFile.path, value);
   };
 
   const handleAcceptRequest = async (userId: string) => {
