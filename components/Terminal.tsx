@@ -124,7 +124,7 @@ const getFileExtension = (lang: string): string => {
 };
 
 export default function Terminal({ projectId, language, code, fileName, fileLanguage }: TerminalProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [output, setOutput] = useState<TerminalLine[]>([
     { type: 'output', text: `CodeSynce Terminal v1.0.0` },
     { type: 'output', text: `Project workspace ready. Language: ${language}` },
@@ -361,11 +361,9 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
           <div className="flex items-center gap-1">
             <span className="text-green-400">{formatCwd(cwd)} $</span>
             <input
-              autoFocus
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              onBlur={(e) => e.target.focus()}
               className="bg-transparent text-white flex-1 outline-none font-mono text-xs"
               placeholder="Type a command..."
               disabled={loading}

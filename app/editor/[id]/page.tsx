@@ -97,7 +97,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
-  const [showTerminal, setShowTerminal] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
@@ -389,6 +389,22 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Terminal toggle */}
+          <button
+            onClick={() => setShowTerminal(!showTerminal)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showTerminal
+                ? 'bg-primary-600/20 text-primary-400 hover:bg-primary-600/30'
+                : 'bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600'
+            }`}
+            title={showTerminal ? 'Hide Terminal' : 'Show Terminal'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Terminal
+          </button>
+
           {/* Online users */}
           <div className="flex -space-x-2">
             {onlineUsers.slice(0, 5).map((user, i) => (
