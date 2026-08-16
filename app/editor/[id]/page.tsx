@@ -11,6 +11,7 @@ import FileExplorer from '@/components/FileExplorer';
 import Terminal from '@/components/Terminal';
 import CommandPalette, { CommandItem } from '@/components/CommandPalette';
 import SearchAndReplace from '@/components/SearchAndReplace';
+import CollaborationPanel from '@/components/CollaborationPanel';
 
 interface ProjectFile {
   name: string;
@@ -279,6 +280,12 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [statistics, setStatistics] = useState({ line: 1, column: 1, lineCount: 1, selectedText: '' });
   const [showSidebar, setShowSidebar] = useState(true);
   const [isFormatting, setIsFormatting] = useState(false);
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, any>>({});
+  const [remoteSelections, setRemoteSelections] = useState<Record<string, any>>({});
+  const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; file?: string; color: string }>>({});
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
@@ -287,6 +294,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedContentRef = useRef<Record<string, string>>({});
   const dirtyTabsRef = useRef<Record<string, boolean>>({});
+  const cursorDecorationsRef = useRef<Record<string, string[]>>({});
+  const selectionDecorationsRef = useRef<Record<string, string[]>>({});
+  const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const cursorUpdateThrottleRef = useRef<Record<string, number>>({});
 
   // Load project
   useEffect(() => {
@@ -398,6 +409,98 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       setChatMessages((prev) => [...prev, msg]);
     });
 
+    // Presence state - initial snapshot of online users
+    socket.on('presence-state', ({ users }) => {
+      setOnlineUsers(users);
+    });
+
+    // Live cursor positions
+    socket.on('cursor-moved', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setRemoteCursors((prev) => ({
+        ...prev,
+        [userId]: {
+          ...data,
+          userId,
+          timestamp: Date.now(),
+        },
+      }));
+    });
+
+    // Remote selections
+    socket.on('selection-updated', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setRemoteSelections((prev) => ({
+        ...prev,
+        [userId]: {
+          ...data,
+          userId,
+          timestamp: Date.now(),
+        },
+      }));
+    });
+
+    // Typing indicators
+    socket.on('typing-started', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setTypingUsers((prev) => ({
+        ...prev,
+        [userId]: {
+          name: data.user?.name || 'Someone',
+          file: data.file,
+          color: data.color || data.user?.color || '#4da3ff',
+        },
+      }));
+      setOnlineUsers(data.users || []);
+    });
+
+    socket.on('typing-stopped', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setTypingUsers((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      setOnlineUsers(data.users || []);
+    });
+
+    // File saved broadcast
+    socket.on('file-saved-broadcast', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (userId === session?.user?.id) {
+        setSyncStatus('synced');
+        setLastSavedAt(new Date(data.timestamp));
+      }
+    });
+
+    // File opened by other users
+    socket.on('file-opened-broadcast', (data: any) => {
+      if (data.users) {
+        setOnlineUsers(data.users);
+      }
+    });
+
+    // Socket connection state
+    socket.on('connect', () => {
+      setSyncStatus('synced');
+    });
+
+    socket.on('disconnect', () => {
+      setSyncStatus('offline');
+    });
+
+    socket.on('connect_error', () => {
+      setSyncStatus('offline');
+    });
+
     return () => {
       socket.emit('leave-project', { projectId: project._id });
       socket.disconnect();
@@ -425,6 +528,208 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     };
   }, [activeFile?.path]);
 
+  // Cleanup stale remote cursors/selections after 10s of no updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setRemoteCursors((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, data] of Object.entries(next)) {
+          if (now - data.timestamp > 10000) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setRemoteSelections((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, data] of Object.entries(next)) {
+          if (now - data.timestamp > 10000) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Render remote cursors and selections as Monaco decorations
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Get current active file path
+    const currentPath = activeFile?.path;
+
+    // Collect decorations for all remote cursors on the current file
+    const cursorDecorations: any[] = [];
+    const cursorKeys: string[] = [];
+
+    Object.entries(remoteCursors).forEach(([userId, data]) => {
+      // Only show cursors for the currently open file
+      if (data.file && data.file !== currentPath) return;
+      if (!data.position) return;
+
+      const color = data.color || '#4da3ff';
+      const userName = data.user?.name || 'User';
+      const position = data.position;
+
+      // Cursor line decoration
+      cursorDecorations.push({
+        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 1),
+        options: {
+          className: 'remote-cursor',
+          beforeContentClassName: `remote-cursor-${userId}`,
+          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          zIndex: 25,
+        },
+      });
+
+      // Cursor label (username) above
+      cursorDecorations.push({
+        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+        options: {
+          afterContentClassName: `remote-cursor-label-${userId}`,
+          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          zIndex: 30,
+        },
+      });
+
+      // Add CSS for the cursor color
+      const styleEl = document.getElementById(`cursor-style-${userId}`) || document.createElement('style');
+      styleEl.id = `cursor-style-${userId}`;
+      styleEl.textContent = `
+        .remote-cursor-${userId} {
+          border-left: 2px solid ${color} !important;
+        }
+        .remote-cursor-label-${userId}::after {
+          content: '${userName.replace(/'/g, "\\'")}';
+          position: absolute;
+          top: -16px;
+          left: -2px;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 2px 2px 2px 0;
+          background: ${color};
+          color: #fff;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 30;
+          line-height: 16px;
+        }
+      `;
+      if (!styleEl.parentNode) document.head.appendChild(styleEl);
+
+      cursorKeys.push(userId);
+    });
+
+    // Collect selection decorations
+    const selectionDecorations: any[] = [];
+    const selectionKeys: string[] = [];
+
+    Object.entries(remoteSelections).forEach(([userId, data]) => {
+      if (data.file && data.file !== currentPath) return;
+      if (!data.selection) return;
+
+      const color = data.color || '#4da3ff';
+      const selection = data.selection;
+
+      if (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn) {
+        return; // empty selection
+      }
+
+      // Selection highlight
+      const rgbaColor = hexToRgba(color, 0.3);
+      selectionDecorations.push({
+        range: new monaco.Range(
+          selection.startLineNumber,
+          selection.startColumn,
+          selection.endLineNumber,
+          selection.endColumn
+        ),
+        options: {
+          className: `remote-selection-${userId}`,
+          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          zIndex: 20,
+        },
+      });
+
+      // Add CSS
+      const styleEl = document.getElementById(`selection-style-${userId}`) || document.createElement('style');
+      styleEl.id = `selection-style-${userId}`;
+      styleEl.textContent = `
+        .remote-selection-${userId} {
+          background-color: ${rgbaColor} !important;
+          border: 1px solid ${color} !important;
+          border-radius: 2px;
+        }
+      `;
+      if (!styleEl.parentNode) document.head.appendChild(styleEl);
+
+      selectionKeys.push(userId);
+    });
+
+    // Apply decorations
+    if (cursorDecorations.length > 0) {
+      editor.deltaDecorations(cursorDecorationsRef.current[`${currentPath}-cursors`] || [], cursorDecorations);
+      cursorDecorationsRef.current[`${currentPath}-cursors`] = cursorDecorations;
+    } else {
+      editor.deltaDecorations(cursorDecorationsRef.current[`${currentPath}-cursors`] || [], []);
+      cursorDecorationsRef.current[`${currentPath}-cursors`] = [];
+    }
+
+    if (selectionDecorations.length > 0) {
+      editor.deltaDecorations(selectionDecorationsRef.current[`${currentPath}-selections`] || [], selectionDecorations);
+      selectionDecorationsRef.current[`${currentPath}-selections`] = selectionDecorations;
+    } else {
+      editor.deltaDecorations(selectionDecorationsRef.current[`${currentPath}-selections`] || [], []);
+      selectionDecorationsRef.current[`${currentPath}-selections`] = [];
+    }
+  }, [remoteCursors, remoteSelections, activeFile?.path]);
+
+  // Track users viewing the current file
+  useEffect(() => {
+    if (!onlineUsers || !activeFile) {
+      setCurrentFileOnlineUsers([]);
+      return;
+    }
+    const users = onlineUsers.filter(
+      (u) => u.currentFile === activeFile.path && (u._id || u.id) !== session?.user?.id
+    );
+    setCurrentFileOnlineUsers(users);
+  }, [onlineUsers, activeFile?.path]);
+
+  // Announce file opened when switching files
+  useEffect(() => {
+    if (!activeFile?.path || !project?._id) return;
+    socketRef.current?.emit('file-opened', {
+      projectId: project._id,
+      file: activeFile.path,
+      user: {
+        _id: session?.user?.id,
+        name: session?.user?.name,
+        image: session?.user?.image,
+      },
+    });
+  }, [activeFile?.path]);
+
+  // Helper to convert hex to rgba
+  function hexToRgba(hex: string, alpha: number): string {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return `rgba(77, 163, 255, ${alpha})`;
+    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
+  }
+
   const handleEditorMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -449,9 +754,16 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         });
       }
 
+      // Throttle cursor broadcast to every 50ms max
+      const now = Date.now();
+      const lastUpdate = cursorUpdateThrottleRef.current['cursor'] || 0;
+      if (now - lastUpdate < 50) return;
+      cursorUpdateThrottleRef.current['cursor'] = now;
+
       socketRef.current?.emit('cursor-update', {
         projectId: project?._id,
         position: e.position,
+        file: activeFile?.path,
         user: {
           _id: session?.user?.id,
           name: session?.user?.name,
@@ -470,6 +782,22 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           line: selection.positionLineNumber,
           column: selection.positionColumn,
         }));
+
+        // Broadcast selection changes to other users
+        socketRef.current?.emit('selection-change', {
+          projectId: project?._id,
+          selection: {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          },
+          file: activeFile?.path,
+          user: {
+            _id: session?.user?.id,
+            name: session?.user?.name,
+          },
+        });
       }
     });
 
@@ -515,6 +843,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     // Skip if content hasn't changed since last save
     if (lastSavedContentRef.current[filePath] === content) return;
 
+    // Set saving status
+    setSyncStatus('saving');
+
     // Clear any existing timeout
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -531,12 +862,26 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
         if (res.ok) {
           lastSavedContentRef.current[filePath] = content;
+          setSyncStatus('synced');
+          const now = new Date();
+          setLastSavedAt(now);
+
+          // Broadcast save event to all collaborators
+          socketRef.current?.emit('file-saved', {
+            projectId: project._id,
+            file: filePath,
+            user: {
+              _id: session?.user?.id,
+              name: session?.user?.name,
+            },
+          });
         }
       } catch (err) {
         console.error('Failed to save file:', err);
+        setSyncStatus('offline');
       }
     }, 800);
-  }, [project]);
+  }, [project, session?.user?.id, session?.user?.name]);
 
   const handleEditorChange = (value: string | undefined) => {
     if (!value || !project || !activeFile) return;
@@ -555,6 +900,30 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     // Also update activeFile reference
     setActiveFile(updatedFile);
+
+    // Send typing indicator
+    socketRef.current?.emit('typing-start', {
+      projectId: project._id,
+      file: activeFile.path,
+      user: {
+        _id: session?.user?.id,
+        name: session?.user?.name,
+      },
+    });
+
+    // Clear previous typing stop timeout and set new one
+    if (typingTimeoutRef.current['typing']) {
+      clearTimeout(typingTimeoutRef.current['typing']);
+    }
+    typingTimeoutRef.current['typing'] = setTimeout(() => {
+      socketRef.current?.emit('typing-stop', {
+        projectId: project._id,
+        user: {
+          _id: session?.user?.id,
+          name: session?.user?.name,
+        },
+      });
+    }, 3000);
 
     // Broadcast file change to other users
     socketRef.current?.emit('file-change', {
@@ -1100,24 +1469,58 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             Terminal
           </button>
 
-          {/* Online users */}
+          {/* Live collaboration indicator */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px]"
+            style={{ background: '#4d4d4d22', color: '#4da3ff' }}
+            title="Live collaboration active"
+          >
+            <span className="live-badge-dot" />
+            <span className="hidden md:inline font-semibold tracking-wide">LIVE</span>
+          </div>
+
+          {/* Online users with colored avatars */}
           <div className="flex -space-x-1.5">
-            {onlineUsers.slice(0, 3).map((user, i) => (
+            {onlineUsers.slice(0, 4).map((user, i) => (
               <div
                 key={i}
-                title={user.name}
-                className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold"
-                style={{ background: '#007acc', borderColor: panelBg, color: 'white' }}
+                title={`${user.name}${user.typing ? ' - typing...' : ''}${user.currentFile ? ` - viewing ${user.currentFile.split('/').pop()}` : ''}`}
+                className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold relative"
+                style={{ background: user.color || '#007acc', borderColor: panelBg, color: 'white' }}
               >
                 {user.name?.charAt(0).toUpperCase()}
+                {user.typing && (
+                  <span className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-green-500 border border-white" />
+                )}
               </div>
             ))}
-            {onlineUsers.length > 3 && (
+            {onlineUsers.length > 4 && (
               <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px]" style={{ background: '#4d4d4d', borderColor: panelBg, color: 'white' }}>
-                +{onlineUsers.length - 3}
+                +{onlineUsers.length - 4}
               </div>
             )}
           </div>
+
+          {/* Typing indicator pill */}
+          {Object.entries(typingUsers)
+            .filter(([id]) => id !== session?.user?.id)
+            .length > 0 && (
+            <div className="typing-pill flex items-center gap-1.5 px-2 py-1 rounded text-[10px]" style={{ background: '#4d4d4d33', color: '#4da3ff' }}>
+              <span className="flex items-center gap-0.5">
+                <span className="typing-dot" style={{ background: '#4da3ff' }} />
+                <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.2s' }} />
+                <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.4s' }} />
+              </span>
+              <span className="font-medium">
+                {(() => {
+                  const typing = Object.entries(typingUsers).filter(([id]) => id !== session?.user?.id);
+                  if (typing.length === 1) return `${typing[0][1].name} is typing...`;
+                  if (typing.length === 2) return `${typing[0][1].name} and ${typing[1][1].name} are typing...`;
+                  return `Multiple people are typing...`;
+                })()}
+              </span>
+            </div>
+          )}
 
           {/* Join requests (owner only) */}
           {isOwner && project.pendingRequests.length > 0 && (
@@ -1299,6 +1702,26 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                       )}
                     </span>
                   ))}
+                  {/* Users viewing this file */}
+                  {currentFileOnlineUsers.length > 0 && (
+                    <div className="flex -space-x-1.5 mr-2">
+                      {currentFileOnlineUsers.slice(0, 3).map((user, i) => (
+                        <div
+                          key={i}
+                          title={`${user.name} is viewing this file`}
+                          className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px] font-bold"
+                          style={{ background: user.color || '#4da3ff', borderColor: tabBg, color: '#fff' }}
+                        >
+                          {user.name?.charAt(0).toUpperCase()}
+                        </div>
+                      ))}
+                      {currentFileOnlineUsers.length > 3 && (
+                        <div className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px]" style={{ background: '#4d4d4d', borderColor: tabBg, color: '#fff' }}>
+                          +{currentFileOnlineUsers.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="ml-auto flex items-center gap-3">
                     {errors.length > 0 && (
                       <button
@@ -1370,6 +1793,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   )}
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Sync status */}
+                  <span className="collab-sync-status" title={
+                    syncStatus === 'synced' ? 'All changes synced'
+                    : syncStatus === 'saving' ? 'Saving changes...'
+                    : 'Connection lost - offline'
+                  }>
+                    <span className={`collab-sync-dot ${syncStatus === 'saving' ? 'saving' : syncStatus === 'offline' ? 'offline' : 'synced'}`} />
+                    <span>
+                      {syncStatus === 'synced' ? 'Synced' : syncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                    </span>
+                  </span>
                   <span className="flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 1.096A4.001 4.001 0 003 15z" />
@@ -1436,68 +1870,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   />
                 )}
                 {activePanel === 'members' && (
-                  <div className="p-4 space-y-3 overflow-y-auto h-full">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold mb-3">
-                        Project Members ({project.members.length + 1})
-                      </h3>
-                      {isOwner && (
-                        <button
-                          onClick={handleClearChat}
-                          className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
-                          style={{ background: '#f8514933', color: '#f85149' }}
-                          title="Clear all chat messages"
-                        >
-                          Clear Chat
-                        </button>
-                      )}
-                    </div>
-                    {/* Owner */}
-                    <div className="flex items-center justify-between rounded-lg p-3" style={{ background: '#4d4d4d33' }}>
-                      {project.owner.image ? (
-                        <img src={project.owner.image} alt={project.owner.name} className="w-8 h-8 rounded-full" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: '#007acc', color: 'white' }}>
-                          {project.owner.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-medium">{project.owner.name}</p>
-                        <p className="text-xs opacity-70" style={{ color: '#4da3ff' }}>Owner</p>
-                      </div>
-                      <span className="text-xs opacity-50">👑</span>
-                    </div>
-                    {/* Members */}
-                    {project.members
-                      .filter((m) => m._id !== project.owner._id)
-                      .map((member) => (
-                        <div key={member._id} className="flex items-center justify-between rounded-lg p-3" style={{ background: '#4d4d4d33' }}>
-                          <div className="flex items-center gap-3">
-                            {member.image ? (
-                              <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: '#007acc', color: 'white' }}>
-                                {member.name.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-medium">{member.name}</p>
-                              <p className="text-xs opacity-60">Member</p>
-                            </div>
-                          </div>
-                          {isOwner && (
-                            <button
-                              onClick={() => handleRemoveMember(member._id)}
-                              className="text-xs px-2 py-1 rounded hover:opacity-80 transition-opacity"
-                              style={{ background: '#f8514933', color: '#f85149' }}
-                              title={`Remove ${member.name}`}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                  </div>
+                  <CollaborationPanel
+                    onlineUsers={onlineUsers}
+                    projectMembers={project.members}
+                    projectOwner={project.owner}
+                    currentUserId={session?.user?.id}
+                    typingUsers={typingUsers}
+                  />
                 )}
               </div>
             </div>
