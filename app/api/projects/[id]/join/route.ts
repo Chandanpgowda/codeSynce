@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import User from '@/models/User';
+import Notification from '@/models/Notification';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -41,6 +42,18 @@ export async function POST(
     // Add user to pending requests
     project.pendingRequests.push(session.user.id as any);
     await project.save();
+
+    // Find the user to get their name
+    const requestingUser = await User.findById(session.user.id).select('name email image');
+
+    // Notify the project owner
+    await Notification.create({
+      user: project.owner,
+      type: 'join_request',
+      message: `${requestingUser?.name || 'Someone'} requested to join "${project.name}"`,
+      projectId: project._id,
+      fromUser: session.user.id,
+    });
 
     return NextResponse.json({ success: true, message: 'Join request sent' });
   } catch (error) {

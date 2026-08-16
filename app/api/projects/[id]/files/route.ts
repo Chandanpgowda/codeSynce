@@ -134,6 +134,8 @@ export async function POST(
 
     parent!.push(newItem);
     project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
 
     return NextResponse.json({ item: newItem }, { status: 201 });
@@ -183,10 +185,9 @@ export async function PUT(
     }
 
     file.content = content;
-    await project.save();
-
-    // Mark as modified
     project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
 
     return NextResponse.json({ success: true });
@@ -236,6 +237,8 @@ export async function DELETE(
     }
 
     project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
 
     return NextResponse.json({ success: true, message: 'Deleted' });

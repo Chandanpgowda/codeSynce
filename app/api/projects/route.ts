@@ -18,21 +18,49 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
     const tag = searchParams.get('tag') || '';
+    const scope = searchParams.get('scope') || ''; // 'mine' | 'collaborating' | ''
 
-    const query: any = { isPublic: true };
+    const query: any = {};
+
+    // Build base query for public projects
+    if (!scope) {
+      query.isPublic = true;
+    }
+
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
+        { tags: { $regex: search, $options: 'i' } },
       ];
     }
     if (tag) {
       query.tags = tag;
     }
 
+    // Filter by scope
+    if (scope === 'mine') {
+      query.owner = session.user.id;
+    } else if (scope === 'collaborating') {
+      query.$and = [
+        { members: session.user.id },
+        { owner: { $ne: session.user.id } },
+      ];
+    } else if (search) {
+      // When searching, also include user's own projects even if private
+      query.$or = [
+        ...(query.$or || []),
+        { owner: session.user.id },
+        { members: session.user.id },
+      ];
+    }
+
     const projects = await Project.find(query)
       .populate('owner', 'name email image')
-      .sort({ createdAt: -1 })
+      .populate('members', 'name email image')
+      .populate('pendingRequests', 'name email image')
+      .populate('lastEditedBy', 'name email image')
+      .sort({ lastEditedAt: -1 })
       .limit(50);
 
     return NextResponse.json({ projects });
@@ -80,6 +108,8 @@ export async function POST(request: NextRequest) {
           type: 'file',
         },
       ],
+      lastEditedAt: new Date(),
+      lastEditedBy: session.user.id,
     });
 
     // Add project to user's owned projects

@@ -30,6 +30,9 @@ export interface IProject {
     message: string;
     timestamp: Date;
   }[];
+  creatorName?: string;
+  lastEditedAt: Date;
+  lastEditedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +48,8 @@ const ProjectSchema = new Schema<IProject>(
     tags: [{ type: String }],
     isPublic: { type: Boolean, default: true },
     files: { type: Schema.Types.Mixed, default: [] },
+    lastEditedAt: { type: Date, default: Date.now },
+    lastEditedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     chatMessages: [
       {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

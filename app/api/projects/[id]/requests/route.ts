@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import User from '@/models/User';
+import Notification from '@/models/Notification';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -67,9 +68,28 @@ export async function POST(
           $push: { projectsJoined: project._id },
         });
 
+        // Notify the accepted user
+        await Notification.create({
+          user: userIdStr,
+          type: 'request_accepted',
+          message: `You were accepted into "${project.name}"`,
+          projectId: project._id,
+          fromUser: session.user.id,
+        });
+
         return NextResponse.json({ success: true, message: 'User added to project' });
       } else {
         await project.save();
+
+        // Notify the rejected user
+        await Notification.create({
+          user: userIdStr,
+          type: 'request_rejected',
+          message: `Your request to join "${project.name}" was rejected`,
+          projectId: project._id,
+          fromUser: session.user.id,
+        });
+
         return NextResponse.json({ success: true, message: 'Join request rejected' });
       }
     } catch (saveError: any) {
@@ -84,9 +104,27 @@ export async function POST(
             await User.findByIdAndUpdate(userIdStr, {
               $push: { projectsJoined: fresh._id },
             });
+
+            await Notification.create({
+              user: userIdStr,
+              type: 'request_accepted',
+              message: `You were accepted into "${fresh.name}"`,
+              projectId: fresh._id,
+              fromUser: session.user.id,
+            });
+
             return NextResponse.json({ success: true, message: 'User added to project' });
           }
           await fresh.save();
+
+          await Notification.create({
+            user: userIdStr,
+            type: 'request_rejected',
+            message: `Your request to join "${fresh.name}" was rejected`,
+            projectId: fresh._id,
+            fromUser: session.user.id,
+          });
+
           return NextResponse.json({ success: true, message: 'Join request rejected' });
         }
       }
