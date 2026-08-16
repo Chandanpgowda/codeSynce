@@ -58,7 +58,7 @@ export default async function Home() {
             </h1>
             <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
               CodeSync is a real-time collaborative coding platform. Create projects,
-              invite developers, code together with VS Code-like editor, chat in real-time,
+              invite developers, code together with editor, chat in real-time,
               and get AI-powered assistance.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
