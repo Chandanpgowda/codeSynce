@@ -10,13 +10,12 @@ const server = http.createServer((req, res) => {
   res.end('CodeSynce Socket Server');
 });
 
+const socketCorsOrigin = process.env.SOCKET_CORS_ORIGIN || '*';
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? process.env.SOCKET_CORS_ORIGIN || 'http://localhost:3000'
-      : 'http://localhost:3000',
+    origin: socketCorsOrigin,
     methods: ['GET', 'POST'],
-    credentials: true,
+    ...(socketCorsOrigin !== '*' && { credentials: true }),
   },
   maxHttpBufferSize: 1e6, // 1MB limit
   transports: ['websocket', 'polling'],
@@ -194,11 +193,12 @@ io.on('connection', (socket) => {
       fileReference: fileReference || undefined,
     };
 
-    // Broadcast to all users in the project
-    io.to(`project:${projectId}`).emit('new-message', msg);
+    // Broadcast to all OTHER users in the project (sender gets optimistic update)
+    socket.to(`project:${projectId}`).emit('new-message', msg);
 
     // Persist to MongoDB
     try {
+
       await Project.findByIdAndUpdate(projectId, {
         $push: {
           chatMessages: {

@@ -43,6 +43,7 @@ interface ChatPanelProps {
     name?: string | null;
     image?: string | null;
   } | null;
+  onSendMessage?: (message: ChatMessage) => void;
 }
 
 function parseMarkdown(text: string): string {
@@ -88,7 +89,7 @@ function parseMarkdown(text: string): string {
   return result;
 }
 
-export default function ChatPanel({ projectId, messages, socket, currentUser }: ChatPanelProps) {
+export default function ChatPanel({ projectId, messages, socket, currentUser, onSendMessage }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -98,18 +99,35 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !socket) return;
+    if (!input.trim()) return;
 
-    socket.emit('send-message', {
-      projectId,
-      message: input.trim(),
+    const trimmedMessage = input.trim();
+
+    // Optimistic update - show message immediately on sender's screen
+    onSendMessage?.({
       user: {
-        _id: currentUser?.id,
-        id: currentUser?.id,
-        name: currentUser?.name,
-        image: currentUser?.image,
+        _id: currentUser?.id || '',
+        name: currentUser?.name || 'Unknown',
+        image: currentUser?.image || undefined,
       },
+      message: trimmedMessage,
+      timestamp: new Date().toISOString(),
+      mentions: [],
     });
+
+    // Emit to server for broadcast to other users
+    if (socket) {
+      socket.emit('send-message', {
+        projectId,
+        message: trimmedMessage,
+        user: {
+          _id: currentUser?.id,
+          id: currentUser?.id,
+          name: currentUser?.name,
+          image: currentUser?.image,
+        },
+      });
+    }
 
     setInput('');
   };

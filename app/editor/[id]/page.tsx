@@ -1851,6 +1851,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     messages={chatMessages}
                     socket={socketRef.current}
                     currentUser={session?.user ?? null}
+                    onSendMessage={(msg) => setChatMessages((prev) => [...prev, msg])}
                   />
                 )}
                 {activePanel === 'ai' && (
