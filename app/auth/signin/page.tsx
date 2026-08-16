@@ -103,7 +103,7 @@ export default function SignInPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-          <p className="text-gray-400 mt-2">Sign in to CodeSynce</p>
+          <p className="text-gray-400 mt-2">Sign in to CodeSync</p>
         </div>
 
         <div className="card">

@@ -129,7 +129,7 @@ export default function SignUpPage() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-white">Create Your Account</h1>
-          <p className="text-gray-400 mt-2">Join CodeSynce and start collaborating</p>
+          <p className="text-gray-400 mt-2">Join CodeSync and start collaborating</p>
         </div>
 
         <div className="card">

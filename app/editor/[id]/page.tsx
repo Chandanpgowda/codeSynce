@@ -13,6 +13,7 @@ import Terminal from '@/components/Terminal';
 import CommandPalette, { CommandItem } from '@/components/CommandPalette';
 import SearchAndReplace from '@/components/SearchAndReplace';
 import CollaborationPanel from '@/components/CollaborationPanel';
+import ShareProjectModal from '@/components/ShareProjectModal';
 
 interface ProjectFile {
   name: string;
@@ -264,6 +265,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [isMember, setIsMember] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [showShareProject, setShowShareProject] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
   const [projectVisibilityDraft, setProjectVisibilityDraft] = useState(true);
@@ -373,7 +375,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     if (!process.env.NEXT_PUBLIC_SOCKET_URL) {
       console.error(
-        '[CodeSynce] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
+        '[CodeSync] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
           '  Add it in Vercel: Settings -> Environment Variables -> NEXT_PUBLIC_SOCKET_URL\n' +
           '  Point it to your Railway socket server (e.g. https://your-app.up.railway.app).\n' +
           '  Then redeploy - env changes require a fresh build.'
@@ -1040,9 +1042,34 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   };
 
-  const handleClearChat = async () => {
-    if (!confirm('Clear all chat messages? This cannot be undone.')) return;
+  const handleUpdateProjectDetails = async (updated: {
+    name?: string;
+    description?: string;
+    language?: string;
+    tags?: string[];
+    isPublic?: boolean;
+  }) => {
+    try {
+      const res = await fetch(`/api/projects/${project?._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
 
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to update project details');
+        return;
+      }
+
+      fetchProject();
+    } catch (err) {
+      console.error('Failed to update project details:', err);
+      alert('Failed to update project details');
+    }
+  };
+
+  const handleClearChat = async () => {
     try {
       const res = await fetch(`/api/projects/${project?._id}?clearChat=true`, {
         method: 'PUT',
@@ -1125,6 +1152,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     const res = await fetch(`/api/projects/${project._id}`, { method: 'DELETE' });
     const data = await res.json();
     if (!res.ok) return alert(data.error || 'Failed to delete project');
+    router.push('/home');
+  };
+
+  const handleRequestProjectAccess = async () => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}/join`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to request access');
+    alert('Access request sent to the project owner.');
     router.push('/home');
   };
 
@@ -1466,9 +1502,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-400 text-lg mb-4">{error}</p>
-          <button onClick={() => router.push('/home')} className="btn-primary">
-            Back to Home
-          </button>
+          {project?.isPublic ? <button onClick={handleRequestProjectAccess} className="btn-primary">Request Access</button> : <button onClick={() => router.push('/home')} className="btn-primary">Back to Home</button>}
         </div>
       </div>
     );
@@ -1520,6 +1554,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </svg>
             </div>
             <span className="font-semibold text-sm">{project.name}</span>
+            {isOwner && (
+              <button type="button" onClick={() => setShowShareProject(true)} className="px-2 py-1 rounded text-xs hover:bg-white/10" title="Share project">Share</button>
+            )}
             {isOwner && (
               <button
                 type="button"
@@ -1718,6 +1755,16 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             <div className="mt-5 pt-4 border-t border-red-500/30"><button type="button" onClick={handleDeleteProject} className="text-sm text-red-400 hover:text-red-300">Delete project permanently</button></div>
           </form>
         </div>
+      )}
+
+      {showShareProject && isOwner && (
+        <ShareProjectModal
+          projectId={project._id}
+          projectName={project.name}
+          isPublic={project.isPublic}
+          onClose={() => setShowShareProject(false)}
+          onVisibilityChange={(isPublic) => setProject((current) => current ? { ...current, isPublic } : current)}
+        />
       )}
 
       {/* Command Palette */}
@@ -2009,6 +2056,14 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                       onRemoveMember={handleRemoveMember}
                       memberPermissions={project.memberPermissions}
                       onPermissionChange={handlePermissionChange}
+                      projectDetails={{
+                        name: project.name,
+                        description: project.description,
+                        language: project.language,
+                        tags: project.tags,
+                        isPublic: project.isPublic,
+                      }}
+                      onUpdateProjectDetails={handleUpdateProjectDetails}
                     />
                     {!isOwner && <div className="px-4 pb-4"><button type="button" onClick={handleLeaveProject} className="w-full text-sm text-red-400 border border-red-500/30 rounded py-2 hover:bg-red-500/10">Leave project</button></div>}
                   </div>

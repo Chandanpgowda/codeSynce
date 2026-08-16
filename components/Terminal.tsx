@@ -128,7 +128,7 @@ const getFileExtension = (lang: string): string => {
 export default function Terminal({ projectId, language, code, fileName, fileLanguage }: TerminalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [output, setOutput] = useState<TerminalLine[]>([
-    { type: 'output', text: `CodeSynce Terminal v1.0.0` },
+    { type: 'output', text: `CodeSync Terminal v1.0.0` },
     { type: 'output', text: `Project workspace ready. Language: ${language}` },
     { type: 'output', text: `Type 'help' to see available commands.` },
     { type: 'output', text: '' },

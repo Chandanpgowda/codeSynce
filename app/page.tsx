@@ -57,7 +57,7 @@ export default async function Home() {
               </span>
             </h1>
             <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-              CodeSynce is a real-time collaborative coding platform. Create projects,
+              CodeSync is a real-time collaborative coding platform. Create projects,
               invite developers, code together with VS Code-like editor, chat in real-time,
               and get AI-powered assistance.
             </p>
@@ -174,7 +174,7 @@ export default async function Home() {
       {/* Footer */}
       <footer className="border-t border-dark-600 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500">
-          <p>© {new Date().getFullYear()} CodeSynce. Built for developers, by developers.</p>
+          <p>© {new Date().getFullYear()} CodeSync. Built for developers, by developers.</p>
         </div>
       </footer>
     </main>

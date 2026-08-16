@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
       // Create new user
       user = await User.create({
-        name: name || 'CodeSynce User',
+        name: name || 'CodeSync User',
         email: type === 'email' ? identifier.toLowerCase() : undefined,
         phone: type === 'phone' ? identifier : undefined,
         provider: type,

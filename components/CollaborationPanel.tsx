@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Collaborator {
   _id?: string;
@@ -25,6 +25,20 @@ interface CollaboratorPanelProps {
   onRemoveMember?: (memberId: string) => void;
   memberPermissions?: Record<string, 'editor' | 'viewer'>;
   onPermissionChange?: (memberId: string, permission: 'editor' | 'viewer') => void;
+  projectDetails?: {
+    name: string;
+    description: string;
+    language: string;
+    tags: string[];
+    isPublic: boolean;
+  };
+  onUpdateProjectDetails?: (updated: {
+    name?: string;
+    description?: string;
+    language?: string;
+    tags?: string[];
+    isPublic?: boolean;
+  }) => Promise<void>;
 }
 
 // Helper to get initials
@@ -57,14 +71,59 @@ export default function CollaborationPanel({
   onRemoveMember,
   memberPermissions = {},
   onPermissionChange,
+  projectDetails,
+  onUpdateProjectDetails,
 }: CollaboratorPanelProps) {
   const [now, setNow] = useState(Date.now());
+  const [isEditingProject, setIsEditingProject] = useState(false);
+  const [editName, setEditName] = useState(projectDetails?.name || '');
+  const [editDescription, setEditDescription] = useState(projectDetails?.description || '');
+  const [editLanguage, setEditLanguage] = useState(projectDetails?.language || 'javascript');
+  const [editTags, setEditTags] = useState(projectDetails?.tags?.join(', ') || '');
+  const [editIsPublic, setEditIsPublic] = useState(projectDetails?.isPublic ?? true);
+  const [savingDetails, setSavingDetails] = useState(false);
+
+  // Update edit form when projectDetails changes
+  useEffect(() => {
+    if (projectDetails) {
+      setEditName(projectDetails.name);
+      setEditDescription(projectDetails.description);
+      setEditLanguage(projectDetails.language);
+      setEditTags(projectDetails.tags?.join(', ') || '');
+      setEditIsPublic(projectDetails.isPublic);
+    }
+  }, [projectDetails]);
 
   // Update the "time ago" every 30s
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleSaveProjectDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateProjectDetails) return;
+    try {
+      setSavingDetails(true);
+      const tagsArray = editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      await onUpdateProjectDetails({
+        name: editName,
+        description: editDescription,
+        language: editLanguage,
+        tags: tagsArray,
+        isPublic: editIsPublic,
+      });
+      setIsEditingProject(false);
+    } catch (err) {
+      console.error('Failed to update project details:', err);
+    } finally {
+      setSavingDetails(false);
+    }
+  };
 
   // Merge owner + members into a full list
   const allMembers = [
@@ -88,12 +147,115 @@ export default function CollaborationPanel({
   return (
     <div className="h-full flex flex-col overflow-y-auto">
       {/* Header */}
-      <div className="p-4 border-b shrink-0" style={{ borderColor: 'rgba(128,128,128,0.2)' }}>
-        <h3 className="text-sm font-semibold mb-1">Collaborators</h3>
-        <p className="text-xs opacity-60">
-          {onlineCount} of {totalCount} online
-        </p>
+      <div className="p-4 border-b shrink-0 flex items-center justify-between" style={{ borderColor: 'rgba(128,128,128,0.2)' }}>
+        <div>
+          <h3 className="text-sm font-semibold mb-0.5">Collaborators</h3>
+          <p className="text-xs opacity-60">
+            {onlineCount} of {totalCount} online
+          </p>
+        </div>
+        {isProjectOwner && onUpdateProjectDetails && (
+          <button
+            onClick={() => setIsEditingProject(!isEditingProject)}
+            className="text-xs px-2.5 py-1 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-colors flex items-center gap-1 font-medium"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            {isEditingProject ? 'Cancel' : 'Edit Project'}
+          </button>
+        )}
       </div>
+
+      {/* Edit Project Details Modal / Panel for Owner */}
+      {isEditingProject && isProjectOwner && (
+        <form onSubmit={handleSaveProjectDetails} className="p-4 border-b space-y-3 bg-white/[0.02]" style={{ borderColor: 'rgba(128,128,128,0.2)' }}>
+          <h4 className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Project Details</h4>
+          
+          <div>
+            <label className="block text-[11px] opacity-70 mb-1">Project Name</label>
+            <input
+              type="text"
+              required
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full bg-[#1e1e1e] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] opacity-70 mb-1">Description</label>
+            <textarea
+              rows={2}
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              className="w-full bg-[#1e1e1e] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[11px] opacity-70 mb-1">Primary Language</label>
+              <select
+                value={editLanguage}
+                onChange={(e) => setEditLanguage(e.target.value)}
+                className="w-full bg-[#1e1e1e] border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="cpp">C++</option>
+                <option value="csharp">C#</option>
+                <option value="go">Go</option>
+                <option value="rust">Rust</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] opacity-70 mb-1">Visibility</label>
+              <select
+                value={editIsPublic ? 'public' : 'private'}
+                onChange={(e) => setEditIsPublic(e.target.value === 'public')}
+                className="w-full bg-[#1e1e1e] border border-white/10 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] opacity-70 mb-1">Tags (comma separated)</label>
+            <input
+              type="text"
+              placeholder="react, node, web"
+              value={editTags}
+              onChange={(e) => setEditTags(e.target.value)}
+              className="w-full bg-[#1e1e1e] border border-white/10 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsEditingProject(false)}
+              className="px-3 py-1 text-xs opacity-70 hover:opacity-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={savingDetails}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-semibold disabled:opacity-50"
+            >
+              {savingDetails ? 'Saving...' : 'Save Details'}
+            </button>
+          </div>
+        </form>
+      )}
 
       {/* Live typing status */}
       {activelyTyping.length > 0 && (
@@ -218,24 +380,26 @@ export default function CollaborationPanel({
               </div>
               {isProjectOwner && member.role === 'Member' && (
                 <div className="shrink-0 flex items-center gap-1">
-                  <select
-                    value={memberPermissions[member._id] || 'editor'}
-                    onChange={(event) => onPermissionChange?.(member._id, event.target.value as 'editor' | 'viewer')}
-                    className="bg-transparent border border-white/10 rounded px-1 py-1 text-[10px]"
-                    aria-label={`${member.name} permission`}
-                  >
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
+                  {onPermissionChange && (
+                    <select
+                      value={memberPermissions[member._id] || 'editor'}
+                      onChange={(event) => onPermissionChange?.(member._id, event.target.value as 'editor' | 'viewer')}
+                      className="bg-transparent border border-white/10 rounded px-1 py-1 text-[10px]"
+                      aria-label={`${member.name} permission`}
+                    >
+                      <option value="editor">Editor</option>
+                      <option value="viewer">Viewer</option>
+                    </select>
+                  )}
                   <button
                     type="button"
                     onClick={() => onRemoveMember?.(member._id)}
-                    className="p-1.5 rounded hover:bg-red-500/15 text-red-400"
+                    className="p-1.5 rounded hover:bg-red-500/20 text-red-400 transition-colors"
                     title={`Remove ${member.name}`}
                     aria-label={`Remove ${member.name}`}
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>

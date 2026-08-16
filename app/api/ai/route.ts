@@ -6,7 +6,7 @@ const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 function buildSystemPrompt(language: string, code: string, context: string) {
-  return `You are CodeSynce AI, an expert coding assistant embedded in a collaborative code editor. 
+  return `You are CodeSync AI, an expert coding assistant embedded in a collaborative code editor. 
 You help developers with:
 - Code writing and debugging
 - Code explanations
