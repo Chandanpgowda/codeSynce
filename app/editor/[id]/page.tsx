@@ -1749,13 +1749,28 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           )}
 
           {/* Join requests (owner only) */}
-          {isOwner && project.pendingRequests.length > 0 && (
+          {isOwner && (
             <button
               onClick={() => setShowRequests(!showRequests)}
-              className="px-2 py-1 rounded text-xs font-medium transition-colors"
-              style={{ background: '#b5890022', color: '#e5c07b' }}
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                showRequests
+                  ? 'text-yellow-300 bg-yellow-500/20'
+                  : project.pendingRequests.length > 0
+                  ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20'
+                  : 'text-gray-400 hover:text-gray-300 hover:bg-white/10'
+              }`}
+              title="Join requests"
             >
-              {project.pendingRequests.length} Request{project.pendingRequests.length > 1 ? 's' : ''}
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                {project.pendingRequests.length > 0 && (
+                  <span className="px-1.5 py-0.25 rounded-full text-[10px]" style={{ background: '#e5c07b', color: '#1e1e1e' }}>
+                    {project.pendingRequests.length}
+                  </span>
+                )}
+              </div>
             </button>
           )}
 
