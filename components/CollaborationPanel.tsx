@@ -21,6 +21,8 @@ interface CollaboratorPanelProps {
   projectOwner: { _id: string; name: string; email: string; image?: string };
   currentUserId?: string;
   typingUsers: Record<string, { name: string; file?: string; color: string }>;
+  isProjectOwner: boolean;
+  onRemoveMember?: (memberId: string) => void;
 }
 
 // Helper to get initials
@@ -49,6 +51,8 @@ export default function CollaborationPanel({
   projectOwner,
   currentUserId,
   typingUsers,
+  isProjectOwner,
+  onRemoveMember,
 }: CollaboratorPanelProps) {
   const [now, setNow] = useState(Date.now());
 
@@ -208,6 +212,19 @@ export default function CollaborationPanel({
                   )}
                 </div>
               </div>
+              {isProjectOwner && member.role === 'Member' && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveMember?.(member._id)}
+                  className="shrink-0 p-1.5 rounded hover:bg-red-500/15 text-red-400"
+                  title={`Remove ${member.name}`}
+                  aria-label={`Remove ${member.name}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           );
         })}

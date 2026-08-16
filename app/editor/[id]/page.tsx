@@ -261,6 +261,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -1054,6 +1058,54 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const openProjectSettings = () => {
+    if (!project) return;
+    setProjectNameDraft(project.name);
+    setProjectDescriptionDraft(project.description);
+    setShowProjectSettings(true);
+  };
+
+  const handleSaveProjectSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !projectNameDraft.trim() || !projectDescriptionDraft.trim()) return;
+
+    setSavingProjectSettings(true);
+    try {
+      const res = await fetch(`/api/projects/${project._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: projectNameDraft.trim(), description: projectDescriptionDraft.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update project');
+
+      setProject((current) => current ? { ...current, ...data.project } : current);
+      setShowProjectSettings(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update project');
+    } finally {
+      setSavingProjectSettings(false);
+    }
+  };
+
+  const handleSendChatMessage = async (message: ChatMessage): Promise<ChatMessage | null> => {
+    try {
+      const res = await fetch(`/api/projects/${project?._id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message.message }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send message');
+
+      setChatMessages((current) => [...current, data.message]);
+      return data.message;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to send message');
+      return null;
+    }
+  };
+
   // Build command palette commands
   const commandItems: CommandItem[] = useMemo(() => {
     return [
@@ -1425,6 +1477,19 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </svg>
             </div>
             <span className="font-semibold text-sm">{project.name}</span>
+            {isOwner && (
+              <button
+                type="button"
+                onClick={openProjectSettings}
+                className="p-1 rounded hover:bg-white/10"
+                title="Edit project details"
+                aria-label="Edit project details"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m16.862 4.487 1.651-1.651a2.121 2.121 0 0 1 3 3L10.582 16.767a4.5 4.5 0 0 1-1.897 1.13l-3.164.949.949-3.164a4.5 4.5 0 0 1 1.13-1.897l9.262-9.298Z" />
+                </svg>
+              </button>
+            )}
           </div>
           <span className="text-[10px] px-1.5 py-0.5 rounded-sm" style={{ background: '#4d4d4d33', color: textColor }}>
             {project.language}
@@ -1581,6 +1646,25 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {showProjectSettings && isOwner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={handleSaveProjectSettings} className="w-full max-w-md rounded-md border p-5 shadow-xl" style={{ background: panelBg, borderColor }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold">Project Details</h2>
+              <button type="button" onClick={() => setShowProjectSettings(false)} className="p-1 rounded hover:bg-white/10" aria-label="Close project settings">×</button>
+            </div>
+            <label className="block text-xs font-medium mb-1" htmlFor="project-name">Name</label>
+            <input id="project-name" value={projectNameDraft} onChange={(e) => setProjectNameDraft(e.target.value)} className="input-field w-full mb-4" maxLength={100} required />
+            <label className="block text-xs font-medium mb-1" htmlFor="project-description">Description</label>
+            <textarea id="project-description" value={projectDescriptionDraft} onChange={(e) => setProjectDescriptionDraft(e.target.value)} className="input-field w-full min-h-24 resize-y" maxLength={500} required />
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setShowProjectSettings(false)} className="px-3 py-1.5 text-sm rounded hover:bg-white/10">Cancel</button>
+              <button type="submit" disabled={savingProjectSettings} className="btn-primary text-sm disabled:opacity-50">{savingProjectSettings ? 'Saving...' : 'Save'}</button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -1851,7 +1935,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     messages={chatMessages}
                     socket={socketRef.current}
                     currentUser={session?.user ?? null}
-                    onSendMessage={(msg) => setChatMessages((prev) => [...prev, msg])}
+                    onSendMessage={handleSendChatMessage}
                   />
                 )}
                 {activePanel === 'ai' && (
@@ -1868,6 +1952,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     projectOwner={project.owner}
                     currentUserId={session?.user?.id}
                     typingUsers={typingUsers}
+                    isProjectOwner={isOwner}
+                    onRemoveMember={handleRemoveMember}
                   />
                 )}
               </div>

@@ -43,7 +43,7 @@ interface ChatPanelProps {
     name?: string | null;
     image?: string | null;
   } | null;
-  onSendMessage?: (message: ChatMessage) => void;
+  onSendMessage?: (message: ChatMessage) => Promise<ChatMessage | null>;
 }
 
 function parseMarkdown(text: string): string {
@@ -91,20 +91,20 @@ function parseMarkdown(text: string): string {
 
 export default function ChatPanel({ projectId, messages, socket, currentUser, onSendMessage }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
     const trimmedMessage = input.trim();
 
-    // Optimistic update - show message immediately on sender's screen
-    onSendMessage?.({
+    const outgoingMessage: ChatMessage = {
       user: {
         _id: currentUser?.id || '',
         name: currentUser?.name || 'Unknown',
@@ -113,19 +113,23 @@ export default function ChatPanel({ projectId, messages, socket, currentUser, on
       message: trimmedMessage,
       timestamp: new Date().toISOString(),
       mentions: [],
-    });
+    };
 
-    // Emit to server for broadcast to other users
+    setIsSending(true);
+    let savedMessage: ChatMessage | null | undefined;
+    try {
+      savedMessage = await onSendMessage?.(outgoingMessage);
+    } finally {
+      setIsSending(false);
+    }
+    if (!savedMessage) return;
+
+    // The API is the source of truth; the socket only informs active collaborators.
     if (socket) {
       socket.emit('send-message', {
         projectId,
-        message: trimmedMessage,
-        user: {
-          _id: currentUser?.id,
-          id: currentUser?.id,
-          name: currentUser?.name,
-          image: currentUser?.image,
-        },
+        ...savedMessage,
+        persisted: true,
       });
     }
 
@@ -271,7 +275,7 @@ export default function ChatPanel({ projectId, messages, socket, currentUser, on
           />
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() || isSending}
             className="btn-primary px-4 disabled:opacity-50"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

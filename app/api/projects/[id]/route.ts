@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import User from '@/models/User';
+import Notification from '@/models/Notification';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import mongoose from 'mongoose';
@@ -139,7 +140,28 @@ export async function DELETE(
         (member: import('mongoose').Types.ObjectId) => member.toString() !== userId
       );
       await project.save();
-      return NextResponse.json({ success: true, message: 'Member removed', project });
+
+      // Remove project from user's projectsJoined
+      await User.findByIdAndUpdate(userId, {
+        $pull: { projectsJoined: project._id },
+      });
+
+      // Notify the removed user
+      await Notification.create({
+        user: userId,
+        type: 'member_removed',
+        message: `You were removed from "${project.name}"`,
+        projectId: project._id,
+        fromUser: session.user.id,
+      });
+
+      // Return populated project so frontend can refresh
+      const updatedProject = await Project.findById(params.id)
+        .populate('owner', 'name email image')
+        .populate('members', 'name email image')
+        .populate('pendingRequests', 'name email image');
+
+      return NextResponse.json({ success: true, message: 'Member removed', project: updatedProject });
     }
 
     // Delete project

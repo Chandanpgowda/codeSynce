@@ -196,6 +196,12 @@ io.on('connection', (socket) => {
     // Broadcast to all OTHER users in the project (sender gets optimistic update)
     socket.to(`project:${projectId}`).emit('new-message', msg);
 
+    // Browser clients persist through the authenticated Next.js API. Keep this
+    // fallback for older clients while avoiding duplicate records for new ones.
+    if (data.persisted) {
+      return;
+    }
+
     // Persist to MongoDB
     try {
 
