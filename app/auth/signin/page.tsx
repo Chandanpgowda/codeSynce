@@ -9,11 +9,9 @@ export default function SignInPage() {
   const router = useRouter();
   const [method, setMethod] = useState<'google' | 'email'>('google');
   const [identifier, setIdentifier] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -26,46 +24,9 @@ export default function SignInPage() {
     }
   };
 
-  const handleSendOTP = async () => {
-    if (!identifier) {
-      setError('Please enter your email or phone number');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
-    try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          identifier,
-          type: method,
-          mode: 'signin',
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Failed to send OTP');
-        return;
-      }
-
-      setOtpSent(true);
-      setSuccess('OTP sent! Check your ' + method + '.');
-    } catch (err) {
-      setError('Failed to send OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyOTP = async () => {
-    if (!otp) {
-      setError('Please enter the OTP code');
+  const handlePasswordSignIn = async () => {
+    if (!identifier || !password) {
+      setError('Please enter your email and password');
       return;
     }
 
@@ -73,21 +34,20 @@ export default function SignInPage() {
     setError('');
 
     try {
-      // Sign in with NextAuth credentials provider
       const result = await signIn('credentials', {
         identifier,
-        code: otp,
+        password,
         redirect: false,
       });
 
       if (result?.error) {
-        setError('Invalid or expired OTP code');
+        setError('Invalid email or password');
         return;
       }
 
       router.push('/home');
     } catch (err) {
-      setError('Failed to verify OTP. Please try again.');
+      setError('Failed to sign in');
     } finally {
       setLoading(false);
     }
@@ -110,7 +70,7 @@ export default function SignInPage() {
           {/* Method Selection */}
           <div className="flex gap-2 mb-6">
             <button
-              onClick={() => { setMethod('google'); setOtpSent(false); setError(''); }}
+              onClick={() => { setMethod('google'); setError(''); }}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                 method === 'google'
                   ? 'bg-primary-600 text-white'
@@ -120,7 +80,7 @@ export default function SignInPage() {
               Google
             </button>
             <button
-              onClick={() => { setMethod('email'); setOtpSent(false); setError(''); }}
+              onClick={() => { setMethod('email'); setError(''); }}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                 method === 'email'
                   ? 'bg-primary-600 text-white'
@@ -134,12 +94,6 @@ export default function SignInPage() {
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
               {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg text-green-400 text-sm">
-              {success}
             </div>
           )}
 
@@ -159,58 +113,35 @@ export default function SignInPage() {
             </button>
           ) : (
             <div className="space-y-4">
-              {!otpSent ? (
-                <>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="you@example.com"
-                      className="input-field"
-                    />
-                  </div>
-                  <button
-                    onClick={handleSendOTP}
-                    disabled={loading}
-                    className="btn-primary w-full disabled:opacity-50"
-                  >
-                    {loading ? 'Sending...' : 'Send OTP'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">
-                      Enter OTP Code
-                    </label>
-                    <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      placeholder="6-digit code"
-                      maxLength={6}
-                      className="input-field text-center text-2xl tracking-widest"
-                    />
-                  </div>
-                  <button
-                    onClick={handleVerifyOTP}
-                    disabled={loading}
-                    className="btn-primary w-full disabled:opacity-50"
-                  >
-                    {loading ? 'Verifying...' : 'Verify & Sign In'}
-                  </button>
-                  <button
-                    onClick={() => { setOtpSent(false); setOtp(''); }}
-                    className="w-full text-sm text-primary-500 hover:text-primary-400"
-                  >
-                    Change {method}
-                  </button>
-                </>
-              )}
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="you@example.com"
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="input-field"
+                />
+              </div>
+              <button
+                onClick={handlePasswordSignIn}
+                disabled={loading}
+                className="btn-primary w-full disabled:opacity-50"
+              >
+                {loading ? 'Signing In...' : 'Sign In'}
+              </button>
             </div>
           )}
         </div>

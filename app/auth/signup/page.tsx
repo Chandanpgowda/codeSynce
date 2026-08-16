@@ -10,6 +10,7 @@ export default function SignUpPage() {
   const [method, setMethod] = useState<'google' | 'email'>('google');
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,16 @@ export default function SignUpPage() {
 
     if (method !== 'google' && !name) {
       setError('Please enter your name');
+      return;
+    }
+
+    if (method !== 'google' && !password) {
+      setError('Please enter a password');
+      return;
+    }
+
+    if (method !== 'google' && password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
@@ -89,6 +100,7 @@ export default function SignUpPage() {
           type: method,
           name,
           mode: 'signup',
+          password,
         }),
       });
 
@@ -197,18 +209,29 @@ export default function SignUpPage() {
                       className="input-field"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm text-gray-400 mb-2">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={identifier}
-                      onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="you@example.com"
-                      className="input-field"
-                    />
-                  </div>
+                   <div>
+                     <label className="block text-sm text-gray-400 mb-2">
+                       Email Address
+                     </label>
+                     <input
+                       type="email"
+                       value={identifier}
+                       onChange={(e) => setIdentifier(e.target.value)}
+                       placeholder="you@example.com"
+                       className="input-field"
+                     />
+                   </div>
+                   <div>
+                     <label className="block text-sm text-gray-400 mb-2">Password</label>
+                     <input
+                       type="password"
+                       value={password}
+                       onChange={(e) => setPassword(e.target.value)}
+                       placeholder="At least 6 characters"
+                       className="input-field"
+                     />
+                     <p className="text-[11px] text-gray-500 mt-1">You will use this password to sign in later</p>
+                   </div>
                   <button
                     onClick={handleSendOTP}
                     disabled={loading}

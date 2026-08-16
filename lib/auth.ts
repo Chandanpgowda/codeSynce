@@ -17,13 +17,45 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         identifier: { label: 'Email or Phone', type: 'text' },
         code: { label: 'OTP Code', type: 'text' },
+        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.identifier || !credentials?.code) {
+        if (!credentials?.identifier) {
           return null;
         }
 
         await dbConnect();
+
+        // If password is provided, authenticate with password
+        if (credentials.password) {
+          const user = await User.findOne({
+            $or: [
+              { email: credentials.identifier.toLowerCase() },
+              { phone: credentials.identifier },
+            ],
+          }).select('+password');
+
+          if (!user || !user.password) {
+            return null;
+          }
+
+          const isValid = await bcrypt.compare(credentials.password, user.password);
+          if (!isValid) {
+            return null;
+          }
+
+          return {
+            id: user._id.toString(),
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          };
+        }
+
+        // Otherwise, fall back to OTP verification
+        if (!credentials?.code) {
+          return null;
+        }
 
         // Verify OTP code
         const otp = await OTP.findOne({
