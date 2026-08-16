@@ -7,6 +7,7 @@ import Editor from '@monaco-editor/react';
 import { io, Socket } from 'socket.io-client';
 import ChatPanel from '@/components/ChatPanel';
 import AIPanel from '@/components/AIPanel';
+import type { ChatMessage } from '@/components/ChatPanel';
 import FileExplorer from '@/components/FileExplorer';
 import Terminal from '@/components/Terminal';
 import CommandPalette, { CommandItem } from '@/components/CommandPalette';
@@ -47,16 +48,6 @@ interface Project {
   files: ProjectFile[];
   language: string;
   tags: string[];
-}
-
-interface ChatMessage {
-  user: {
-    _id: string;
-    name: string;
-    image?: string;
-  };
-  message: string;
-  timestamp: string;
 }
 
 interface OpenTab {

@@ -8,7 +8,7 @@ interface Mentions {
   mentionedIn: string;
 }
 
-interface ChatMessage {
+export interface ChatMessage {
   user: {
     _id: string;
     name: string;
@@ -218,18 +218,21 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
                       ))}
                     </div>
                   )}
-                  {msg.fileReference && (
-                    <div className="mt-2">
-                      <div className="text-xs text-primary-500 cursor-pointer hover:underline" 
-                        onClick={() => {
-                          // Navigate to the file/line
-                          window.location.href = `/editor/${msg.fileReference.projectId}`;
-                        }}
-                      >
-                        📄 Jump to {msg.fileReference.filePath.split('/').pop()} (line {msg.fileReference.lineNumber})
+                  {msg.fileReference && (() => {
+                    const fileRef = msg.fileReference;
+                    return (
+                      <div className="mt-2">
+                        <div className="text-xs text-primary-500 cursor-pointer hover:underline" 
+                          onClick={() => {
+                            // Navigate to the file/line
+                            window.location.href = `/editor/${fileRef.projectId}`;
+                          }}
+                        >
+                          📄 Jump to {fileRef.filePath.split('/').pop()} (line {fileRef.lineNumber})
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             </div>
