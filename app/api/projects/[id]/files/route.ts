@@ -97,7 +97,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { type, name, parentPath } = body;
+    const { type, name, parentPath, content } = body;
 
     if (!type || !name || (type !== 'file' && type !== 'folder')) {
       return NextResponse.json(
@@ -129,7 +129,7 @@ export async function POST(
       path: fullPath,
       type,
       ...(type === 'file'
-        ? { content: '', language: getLanguageFromName(name) }
+        ? { content: content !== undefined ? content : '', language: getLanguageFromName(name) }
         : { children: [] }),
     };
 

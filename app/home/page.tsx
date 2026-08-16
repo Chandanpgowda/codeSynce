@@ -592,78 +592,82 @@ export default function HomePage() {
 
                   {/* Actions */}
                   <div className="px-5 py-3 bg-white/[0.02] border-t border-white/5 flex items-center gap-2">
-                    {isOwner || isMember ? (
-                      <>
-                        <Link
-                          href={`/editor/${project._id}`}
-                          className="flex-1 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-primary-500/20"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                          </svg>
-                          Open Editor
-                        </Link>
-                        <button
-                          onClick={() => setShowShareProject(project._id)}
-                          className="flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-white/10 text-gray-300 hover:text-white text-sm font-medium py-2 px-3 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
-                          title="Share project"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.5 9 12c0-.5-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 110 2.684m0-2.684l6.632 3.316m-6.632-6a3 3 0 110-2.684m0 2.684l6.632-3.316" />
-                          </svg>
-                          Share
-                        </button>
-                      </>
-                    ) : isPending ? (
-                      <button
-                        onClick={() => handleCancelJoinRequest(project._id)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-sm font-medium py-2 rounded-lg transition-colors border border-yellow-500/20"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Pending... Cancel
-                      </button>
-                    ) : project.isPublic ? (
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/editor/${project._id}`);
-                          setCopiedId(project._id);
-                          setTimeout(() => setCopiedId(null), 2000);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-primary-600/20 text-gray-300 hover:text-white text-sm font-medium py-2 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
-                      >
-                        {copiedId === project._id ? (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                            </svg>
-                            Copy Link
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleJoinRequest(project._id)}
-                        className="flex-1 flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-primary-600/20 text-gray-300 hover:text-white text-sm font-medium py-2 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                        </svg>
-                        Join Project
-                      </button>
-                    )}
+                     {isOwner || isMember ? (
+                       <>
+                         <Link
+                           href={`/editor/${project._id}`}
+                           className="flex-1 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 rounded-lg transition-all hover:shadow-lg hover:shadow-primary-500/20"
+                         >
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                           </svg>
+                           Open Editor
+                         </Link>
+                         <button
+                           onClick={() => setShowShareProject(project._id)}
+                           className="flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-white/10 text-gray-300 hover:text-white text-sm font-medium py-2 px-3 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                           title="Share project"
+                         >
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.5 9 12c0-.5-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 110 2.684m0-2.684l6.632 3.316m-6.632-6a3 3 0 110-2.684m0 2.684l6.632-3.316" />
+                           </svg>
+                           Share
+                         </button>
+                       </>
+                     ) : isPending ? (
+                       <button
+                         onClick={() => handleCancelJoinRequest(project._id)}
+                         className="flex-1 flex items-center justify-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-sm font-medium py-2 rounded-lg transition-colors border border-yellow-500/20"
+                       >
+                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                         </svg>
+                         Pending... Cancel
+                       </button>
+                     ) : (
+                       <>
+                         <button
+                           onClick={() => handleJoinRequest(project._id)}
+                           className="flex-1 flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-primary-600/20 text-gray-300 hover:text-white text-sm font-medium py-2 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                         >
+                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                           </svg>
+                           Join Project
+                         </button>
+                         {project.isPublic && (
+                           <button
+                             onClick={() => {
+                               navigator.clipboard.writeText(`${window.location.origin}/editor/${project._id}`);
+                               setCopiedId(project._id);
+                               setTimeout(() => setCopiedId(null), 2000);
+                             }}
+                             className="flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-white/10 text-gray-300 hover:text-white text-sm font-medium py-2 px-3 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                             title="Copy project link"
+                           >
+                             {copiedId === project._id ? (
+                               <>
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4 L19 7" />
+                                 </svg>
+                                 Copied!
+                               </>
+                             ) : (
+                               <>
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 00-2-2V6a2 2 0 002-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                 </svg>
+                                 Copy Link
+                               </>
+                             )}
+                           </button>
+                         )}
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         ) : (
           <div className="bg-[#161b22] border border-white/5 rounded-2xl py-20 text-center">

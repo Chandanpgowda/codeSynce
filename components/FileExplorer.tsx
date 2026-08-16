@@ -214,6 +214,60 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
     setContextMenu(null);
   };
 
+  function findFileContent(items: ProjectFile[], targetPath: string): ProjectFile | null {
+    for (const item of items) {
+      if (item.path === targetPath) return item;
+      if (item.children) {
+        const found = findFileContent(item.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const handleDuplicate = async (path: string) => {
+    if (!contextMenu) return;
+    const item = findFileContent(files, path);
+    if (!item) {
+      alert('File not found');
+      return;
+    }
+
+    const parentPath = findParentPath(path);
+    const originalName = path.split('/').pop() || '';
+    const newName = `copy_${originalName}`;
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/files`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'file',
+          name: newName,
+          parentPath: parentPath || null,
+          content: item.content || '',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to duplicate');
+        return;
+      }
+
+      setContextMenu(null);
+      onFilesChange();
+    } catch (error) {
+      alert('Failed to duplicate');
+    }
+  };
+
+  const handleCopyPath = (path: string) => {
+    navigator.clipboard.writeText(path);
+    setContextMenu(null);
+  };
+
+
   const renderTree = (items: ProjectFile[], level: number) => {
     const filtered = items.filter((item) => !isExcludedFile(item.name));
     if (filtered.length === 0 && level > 0) return null;
@@ -509,6 +563,26 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                   Rename
+                </button>
+                {contextMenu.type === 'file' && (
+                  <button
+                    className="w-full text-left px-3 py-1.5 text-[13px] text-gray-300 hover:bg-[#30363d] transition-colors flex items-center gap-2"
+                    onClick={() => handleDuplicate(contextMenu.path)}
+                  >
+                    <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8M8 16v2a2 2 0 002 2h4a2 2 0 002-2v-2m-6-4l3-3 3 3" />
+                    </svg>
+                    Duplicate
+                  </button>
+                )}
+                <button
+                  className="w-full text-left px-3 py-1.5 text-[13px] text-gray-300 hover:bg-[#30363d] transition-colors flex items-center gap-2"
+                  onClick={() => handleCopyPath(contextMenu.path)}
+                >
+                  <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16h8m-5-4l4-4 4 4" />
+                  </svg>
+                  Copy Path
                 </button>
                 <div className="border-t border-[#30363d] my-1" />
               </>
