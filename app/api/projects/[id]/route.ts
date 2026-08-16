@@ -35,6 +35,12 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    const isOwner = project.owner.toString() === session.user.id;
+    const isMember = project.members.some((member: import('mongoose').Types.ObjectId) => member.toString() === session.user.id);
+    if (!project.isPublic && !isOwner && !isMember) {
+      return NextResponse.json({ error: 'You do not have access to this private project' }, { status: 403 });
+    }
+
     return NextResponse.json({ project });
   } catch (error) {
     console.error('Get project error:', error);
@@ -81,7 +87,19 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { name, description, language, tags, isPublic } = body;
+    const { name, description, language, tags, isPublic, memberId, permission } = body;
+
+    if (memberId || permission) {
+      if (!memberId || !['editor', 'viewer'].includes(permission)) {
+        return NextResponse.json({ error: 'A member and valid permission are required' }, { status: 400 });
+      }
+      if (memberId === project.owner.toString() || !project.members.some((member: import('mongoose').Types.ObjectId) => member.toString() === memberId)) {
+        return NextResponse.json({ error: 'Member not found' }, { status: 404 });
+      }
+      project.memberPermissions.set(memberId, permission);
+      await project.save();
+      return NextResponse.json({ success: true, memberPermissions: Object.fromEntries(project.memberPermissions) });
+    }
 
     if (name) project.name = name;
     if (description) project.description = description;
@@ -115,6 +133,7 @@ export async function DELETE(
 
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
+    const leaveProject = searchParams.get('leave') === 'true';
 
     // Validate ObjectId format
     if (!mongoose.Types.ObjectId.isValid(params.id)) {
@@ -124,6 +143,17 @@ export async function DELETE(
     const project = await Project.findById(params.id);
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    if (leaveProject) {
+      if (project.owner.toString() === session.user.id) {
+        return NextResponse.json({ error: 'Project owners cannot leave. Transfer ownership or delete the project.' }, { status: 400 });
+      }
+      project.members = project.members.filter((member: import('mongoose').Types.ObjectId) => member.toString() !== session.user.id);
+      project.memberPermissions.delete(session.user.id);
+      await project.save();
+      await User.findByIdAndUpdate(session.user.id, { $pull: { projectsJoined: project._id } });
+      return NextResponse.json({ success: true, message: 'You left the project' });
     }
 
     if (userId) {
@@ -139,6 +169,7 @@ export async function DELETE(
       project.members = project.members.filter(
         (member: import('mongoose').Types.ObjectId) => member.toString() !== userId
       );
+      project.memberPermissions.delete(userId);
       await project.save();
 
       // Remove project from user's projectsJoined

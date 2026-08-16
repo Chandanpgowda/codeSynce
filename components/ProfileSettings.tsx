@@ -321,7 +321,9 @@ export default function ProfileSettings({ onClose }: ProfileSettingsProps) {
               <div className="card">
                 <h3 className="text-white font-semibold mb-4">Session</h3>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/' })}
+                  onClick={() => {
+                    if (confirm('Sign out from this session?')) signOut({ callbackUrl: '/' });
+                  }}
                   className="btn-secondary w-full"
                 >
                   Sign Out

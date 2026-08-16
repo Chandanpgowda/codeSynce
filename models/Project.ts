@@ -20,10 +20,13 @@ export interface IProject {
   description: string;
   owner: mongoose.Types.ObjectId;
   members: mongoose.Types.ObjectId[];
+  memberPermissions: Map<string, 'editor' | 'viewer'>;
   pendingRequests: mongoose.Types.ObjectId[];
   language: string;
   tags: string[];
   isPublic: boolean;
+  inviteToken?: string;
+  inviteExpiresAt?: Date;
   files: (IProjectFile | IProjectFolder)[];
   chatMessages: {
     user: mongoose.Types.ObjectId;
@@ -50,10 +53,13 @@ const ProjectSchema = new Schema<IProject>(
     description: { type: String, required: true },
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    memberPermissions: { type: Map, of: String, default: {} },
     pendingRequests: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     language: { type: String, default: 'javascript' },
     tags: [{ type: String }],
     isPublic: { type: Boolean, default: true },
+    inviteToken: { type: String, select: false },
+    inviteExpiresAt: { type: Date, select: false },
     files: { type: Schema.Types.Mixed, default: [] },
     lastEditedAt: { type: Date, default: Date.now },
     lastEditedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

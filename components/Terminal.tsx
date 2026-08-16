@@ -15,6 +15,8 @@ interface TerminalLine {
   text: string;
 }
 
+type ExecutionStatus = 'idle' | 'running' | 'completed' | 'failed' | 'stopped';
+
 // Map file extensions / language names to run commands
 const getRunCommand = (fileName: string, language: string): string | null => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -137,7 +139,10 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
   const [cwd, setCwd] = useState('~');
   const [loading, setLoading] = useState(false);
   const [runningCode, setRunningCode] = useState(false);
+  const [executionInput, setExecutionInput] = useState('');
+  const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('idle');
   const outputRef = useRef<HTMLDivElement>(null);
+  const runAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     outputRef.current?.scrollTo(0, outputRef.current.scrollHeight);
@@ -221,7 +226,11 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
       return;
     }
 
+    setIsOpen(true);
     setRunningCode(true);
+    setExecutionStatus('running');
+    const controller = new AbortController();
+    runAbortRef.current = controller;
     setOutput((prev) => [
       ...prev,
       { type: 'input', text: `${formatCwd(cwd)} $ ▶ Run Code (${fileLanguage || language})` },
@@ -231,7 +240,8 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
       const res = await fetch(`/api/projects/${projectId}/terminal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, fileName, fileLanguage, runCode: true }),
+        body: JSON.stringify({ code, fileName, fileLanguage, stdin: executionInput, runCode: true }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -242,6 +252,7 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
           { type: 'error', text: data.error || 'Failed to run code' },
           { type: 'output', text: '' },
         ]);
+        setExecutionStatus('failed');
         return;
       }
 
@@ -254,17 +265,34 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
             { type: 'output', text: line },
           ]);
         });
-        setOutput((prev) => [...prev, { type: 'output', text: '' }]);
       }
+      if (data.errors && Array.isArray(data.errors)) {
+        data.errors.forEach((line: string) => {
+          setOutput((prev) => [...prev, { type: 'error', text: line }]);
+        });
+      }
+      setOutput((prev) => [...prev, { type: 'output', text: '' }]);
+      setExecutionStatus(data.status === 'failed' ? 'failed' : 'completed');
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setOutput((prev) => [...prev, { type: 'error', text: 'Execution stopped.' }, { type: 'output', text: '' }]);
+        setExecutionStatus('stopped');
+        return;
+      }
       setOutput((prev) => [
         ...prev,
         { type: 'error', text: 'Failed to run code' },
         { type: 'output', text: '' },
       ]);
+      setExecutionStatus('failed');
     } finally {
       setRunningCode(false);
+      runAbortRef.current = null;
     }
+  };
+
+  const handleStopCode = () => {
+    runAbortRef.current?.abort();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -289,9 +317,17 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
       {/* Terminal Header */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-dark-800 border-b border-dark-600 shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 font-medium">TERMINAL</span>
+          <span className="text-xs text-gray-400 font-medium">CONSOLE</span>
           <span className="text-xs text-gray-600">|</span>
           <span className="text-xs text-gray-500">{formatCwd(cwd)}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-sm ${
+            executionStatus === 'running' ? 'bg-yellow-500/20 text-yellow-300' :
+            executionStatus === 'completed' ? 'bg-green-500/20 text-green-400' :
+            executionStatus === 'failed' ? 'bg-red-500/20 text-red-400' :
+            executionStatus === 'stopped' ? 'bg-gray-500/20 text-gray-300' : 'bg-gray-700 text-gray-400'
+          }`}>
+            {executionStatus === 'idle' ? 'Ready' : executionStatus[0].toUpperCase() + executionStatus.slice(1)}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {/* Run Code Button */}
@@ -308,8 +344,21 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v10a2 2 0 002 2h4l5 5V5a2 2 0 00-2-2H7a2 2 0 00-2 2z" />
             </svg>
-            {runningCode ? 'Running...' : 'Run Code'}
+            {runningCode ? 'Running...' : 'Run'}
           </button>
+          {runningCode && (
+            <button
+              type="button"
+              onClick={handleStopCode}
+              className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              title="Stop execution"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="6" y="6" width="12" height="12" rx="1" strokeWidth="2" />
+              </svg>
+              Stop
+            </button>
+          )}
           {isOpen && (
             <button
               onClick={() => setOutput([])}
@@ -337,6 +386,18 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
 
       {/* Terminal Output */}
       {isOpen && (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="px-3 py-2 border-b border-dark-700 shrink-0">
+            <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1" htmlFor="execution-input">Program input</label>
+            <textarea
+              id="execution-input"
+              value={executionInput}
+              onChange={(event) => setExecutionInput(event.target.value)}
+              className="w-full h-14 resize-none rounded bg-dark-950 border border-dark-700 px-2 py-1.5 font-mono text-xs text-gray-200 outline-none focus:border-primary-500"
+              placeholder="Optional stdin, passed to the program when you run it"
+              disabled={runningCode}
+            />
+          </div>
         <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1" ref={outputRef}>
           {output.map((line, i) => (
             <div
@@ -369,6 +430,7 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
               disabled={loading}
             />
           </div>
+        </div>
         </div>
       )}
     </div>

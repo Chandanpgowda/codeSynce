@@ -48,6 +48,8 @@ interface Project {
   files: ProjectFile[];
   language: string;
   tags: string[];
+  isPublic: boolean;
+  memberPermissions?: Record<string, 'editor' | 'viewer'>;
 }
 
 interface OpenTab {
@@ -264,6 +266,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState('');
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
+  const [projectVisibilityDraft, setProjectVisibilityDraft] = useState(true);
+  const [inviteLink, setInviteLink] = useState('');
   const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1062,6 +1066,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     if (!project) return;
     setProjectNameDraft(project.name);
     setProjectDescriptionDraft(project.description);
+    setProjectVisibilityDraft(project.isPublic);
+    setInviteLink('');
     setShowProjectSettings(true);
   };
 
@@ -1074,7 +1080,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       const res = await fetch(`/api/projects/${project._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectNameDraft.trim(), description: projectDescriptionDraft.trim() }),
+        body: JSON.stringify({ name: projectNameDraft.trim(), description: projectDescriptionDraft.trim(), isPublic: projectVisibilityDraft }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update project');
@@ -1086,6 +1092,40 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     } finally {
       setSavingProjectSettings(false);
     }
+  };
+
+  const handlePermissionChange = async (memberId: string, permission: 'editor' | 'viewer') => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId, permission }),
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to update permission');
+    setProject((current) => current ? { ...current, memberPermissions: data.memberPermissions } : current);
+  };
+
+  const handleGenerateInvite = async () => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}/invite`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to create invite link');
+    setInviteLink(`${window.location.origin}/invite?project=${project._id}&token=${data.token}`);
+  };
+
+  const handleLeaveProject = async () => {
+    if (!project || !confirm('Leave this project? You will need a new invite or approved join request to return.')) return;
+    const res = await fetch(`/api/projects/${project._id}?leave=true`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to leave project');
+    router.push('/home');
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project || !confirm(`Delete "${project.name}" permanently? This cannot be undone.`)) return;
+    const res = await fetch(`/api/projects/${project._id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to delete project');
+    router.push('/home');
   };
 
   const handleSendChatMessage = async (message: ChatMessage): Promise<ChatMessage | null> => {
@@ -1359,6 +1399,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   }, [project, openFileInTab]);
 
+  const canEdit = isOwner || project?.memberPermissions?.[session?.user?.id || ''] !== 'viewer';
+
   // Editor options
   const editorOptions = {
     fontSize: 14,
@@ -1397,6 +1439,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     hideCursorInOverviewRuler: true,
     roundedSelection: true,
     mouseWheelZoom: true,
+    readOnly: !canEdit,
   };
 
   // Get breadcrumb path segments
@@ -1660,10 +1703,19 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             <input id="project-name" value={projectNameDraft} onChange={(e) => setProjectNameDraft(e.target.value)} className="input-field w-full mb-4" maxLength={100} required />
             <label className="block text-xs font-medium mb-1" htmlFor="project-description">Description</label>
             <textarea id="project-description" value={projectDescriptionDraft} onChange={(e) => setProjectDescriptionDraft(e.target.value)} className="input-field w-full min-h-24 resize-y" maxLength={500} required />
+            <div className="flex items-center justify-between mt-4 border border-white/10 rounded p-3">
+              <div><p className="text-sm font-medium">{projectVisibilityDraft ? 'Public project' : 'Private project'}</p><p className="text-xs opacity-60">{projectVisibilityDraft ? 'Anyone can request access.' : 'Only invited members can access it.'}</p></div>
+              <button type="button" onClick={() => setProjectVisibilityDraft((value) => !value)} className={`relative w-10 h-5 rounded-full ${projectVisibilityDraft ? 'bg-primary-600' : 'bg-gray-600'}`} aria-label="Toggle project visibility"><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${projectVisibilityDraft ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+            </div>
+            <div className="mt-4 border border-white/10 rounded p-3">
+              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Secure invite link</p><p className="text-xs opacity-60">Expires seven days after creation.</p></div><button type="button" onClick={handleGenerateInvite} className="px-2 py-1 text-xs rounded bg-primary-600 hover:bg-primary-700">Generate</button></div>
+              {inviteLink && <div className="flex gap-2 mt-2"><input readOnly value={inviteLink} className="input-field text-xs flex-1" /><button type="button" onClick={() => navigator.clipboard.writeText(inviteLink)} className="px-2 py-1 text-xs rounded hover:bg-white/10">Copy</button></div>}
+            </div>
             <div className="flex justify-end gap-2 mt-5">
               <button type="button" onClick={() => setShowProjectSettings(false)} className="px-3 py-1.5 text-sm rounded hover:bg-white/10">Cancel</button>
               <button type="submit" disabled={savingProjectSettings} className="btn-primary text-sm disabled:opacity-50">{savingProjectSettings ? 'Saving...' : 'Save'}</button>
             </div>
+            <div className="mt-5 pt-4 border-t border-red-500/30"><button type="button" onClick={handleDeleteProject} className="text-sm text-red-400 hover:text-red-300">Delete project permanently</button></div>
           </form>
         </div>
       )}
@@ -1946,15 +1998,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   />
                 )}
                 {activePanel === 'members' && (
-                  <CollaborationPanel
-                    onlineUsers={onlineUsers}
-                    projectMembers={project.members}
-                    projectOwner={project.owner}
-                    currentUserId={session?.user?.id}
-                    typingUsers={typingUsers}
-                    isProjectOwner={isOwner}
-                    onRemoveMember={handleRemoveMember}
-                  />
+                  <div className="h-full flex flex-col">
+                    <CollaborationPanel
+                      onlineUsers={onlineUsers}
+                      projectMembers={project.members}
+                      projectOwner={project.owner}
+                      currentUserId={session?.user?.id}
+                      typingUsers={typingUsers}
+                      isProjectOwner={isOwner}
+                      onRemoveMember={handleRemoveMember}
+                      memberPermissions={project.memberPermissions}
+                      onPermissionChange={handlePermissionChange}
+                    />
+                    {!isOwner && <div className="px-4 pb-4"><button type="button" onClick={handleLeaveProject} className="w-full text-sm text-red-400 border border-red-500/30 rounded py-2 hover:bg-red-500/10">Leave project</button></div>}
+                  </div>
                 )}
               </div>
             </div>

@@ -22,17 +22,25 @@ export async function GET(request: NextRequest) {
 
     const query: any = {};
 
-    // Build base query for public projects
-    if (!scope) {
-      query.isPublic = true;
-    }
-
-    if (search) {
-      query.$or = [
+    const searchFilter = search
+      ? {
+          $or: [
         { name: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
         { tags: { $regex: search, $options: 'i' } },
-      ];
+          ],
+        }
+      : null;
+
+    // Public projects are discoverable, while a user's private projects remain visible to them.
+    if (!scope) {
+      const accessFilter = {
+        $or: [{ isPublic: true }, { owner: session.user.id }, { members: session.user.id }],
+      };
+      if (searchFilter) query.$and = [accessFilter, searchFilter];
+      else query.$or = accessFilter.$or;
+    } else if (searchFilter) {
+      Object.assign(query, searchFilter);
     }
     if (tag) {
       query.tags = tag;
@@ -45,13 +53,6 @@ export async function GET(request: NextRequest) {
       query.$and = [
         { members: session.user.id },
         { owner: { $ne: session.user.id } },
-      ];
-    } else if (search) {
-      // When searching, also include user's own projects even if private
-      query.$or = [
-        ...(query.$or || []),
-        { owner: session.user.id },
-        { members: session.user.id },
       ];
     }
 

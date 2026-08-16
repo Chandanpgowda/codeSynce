@@ -23,6 +23,8 @@ interface CollaboratorPanelProps {
   typingUsers: Record<string, { name: string; file?: string; color: string }>;
   isProjectOwner: boolean;
   onRemoveMember?: (memberId: string) => void;
+  memberPermissions?: Record<string, 'editor' | 'viewer'>;
+  onPermissionChange?: (memberId: string, permission: 'editor' | 'viewer') => void;
 }
 
 // Helper to get initials
@@ -53,6 +55,8 @@ export default function CollaborationPanel({
   typingUsers,
   isProjectOwner,
   onRemoveMember,
+  memberPermissions = {},
+  onPermissionChange,
 }: CollaboratorPanelProps) {
   const [now, setNow] = useState(Date.now());
 
@@ -213,17 +217,28 @@ export default function CollaborationPanel({
                 </div>
               </div>
               {isProjectOwner && member.role === 'Member' && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveMember?.(member._id)}
-                  className="shrink-0 p-1.5 rounded hover:bg-red-500/15 text-red-400"
-                  title={`Remove ${member.name}`}
-                  aria-label={`Remove ${member.name}`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="shrink-0 flex items-center gap-1">
+                  <select
+                    value={memberPermissions[member._id] || 'editor'}
+                    onChange={(event) => onPermissionChange?.(member._id, event.target.value as 'editor' | 'viewer')}
+                    className="bg-transparent border border-white/10 rounded px-1 py-1 text-[10px]"
+                    aria-label={`${member.name} permission`}
+                  >
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveMember?.(member._id)}
+                    className="p-1.5 rounded hover:bg-red-500/15 text-red-400"
+                    title={`Remove ${member.name}`}
+                    aria-label={`Remove ${member.name}`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               )}
             </div>
           );

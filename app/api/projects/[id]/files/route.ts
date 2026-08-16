@@ -91,8 +91,9 @@ export async function POST(
     // Check if user is a member
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -165,8 +166,9 @@ export async function PUT(
 
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -217,8 +219,9 @@ export async function DELETE(
 
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
