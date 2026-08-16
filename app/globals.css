@@ -60,6 +60,46 @@ body {
   --vscode-editor-background: #0d1117 !important;
 }
 
+/* Search & Replace match highlight */
+.find-match-highlight {
+  background-color: rgba(255, 196, 0, 0.25) !important;
+  border-radius: 2px;
+  outline: 1px solid rgba(255, 196, 0, 0.2) !important;
+  box-sizing: border-box;
+}
+
+/* VS Code-like editor container */
+.vscode-editor-container {
+  background: #1e1e1e !important;
+}
+
+.vscode-editor-container .monaco-editor,
+.vscode-editor-container .monaco-editor-background,
+.vscode-editor-container .monaco-editor .margin {
+  background-color: #1e1e1e !important;
+}
+
+.vscode-editor-container .monaco-editor,
+.vscode-editor-container .monaco-editor .inputarea.ime-input {
+  color: #d4d4d4 !important;
+}
+
+/* Command palette kbd styling */
+kbd {
+  font-family: inherit;
+  font-size: 10px;
+}
+
+/* Tab close button hover */
+.tab-close-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tab-close-btn:hover {
+  opacity: 1;
+}
+
 /* ==== Animations ==== */
 
 /* Fade in up animation */
