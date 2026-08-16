@@ -11,6 +11,7 @@ export default function SignUpPage() {
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -223,13 +224,31 @@ export default function SignUpPage() {
                    </div>
                    <div>
                      <label className="block text-sm text-gray-400 mb-2">Password</label>
-                     <input
-                       type="password"
-                       value={password}
-                       onChange={(e) => setPassword(e.target.value)}
-                       placeholder="At least 6 characters"
-                       className="input-field"
-                     />
+                     <div className="relative">
+                       <input
+                         type={showPassword ? 'text' : 'password'}
+                         value={password}
+                         onChange={(e) => setPassword(e.target.value)}
+                         placeholder="At least 6 characters"
+                         className="input-field pr-10"
+                       />
+                       <button
+                         type="button"
+                         onClick={() => setShowPassword(!showPassword)}
+                         className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                       >
+                         {showPassword ? (
+                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.045l-6.375-5.25a3 3 0 00-1.5-1.5l-4.5-7.5a1 1 0 00-.842-1.5h-.5a1 1 0 00-.842.842l1.5 4.5a1 1 0 00.197 1.238l5.25 6.375a1 1 0 00.202.238l1.5 1.5a1 1 0 01.216 1.5h.5a1 1 0 01.842-.842l1.5-4.5a1 1 0 00-.842-1.5l4.5-1.5a1 1 0 010 2l-6.375 5.25a3 3 0 00-1.5 1.5z" />
+                           </svg>
+                         ) : (
+                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.084 12s5.943 7 9.917 7 9.917-7-9.917-7-9.917 7z" />
+                           </svg>
+                         )}
+                       </button>
+                     </div>
                      <p className="text-[11px] text-gray-500 mt-1">You will use this password to sign in later</p>
                    </div>
                   <button
