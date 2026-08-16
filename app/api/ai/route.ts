@@ -5,6 +5,25 @@ import { authOptions } from '@/lib/auth';
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
+type AIAction =
+  | 'explain'
+  | 'fix'
+  | 'optimize'
+  | 'refactor'
+  | 'generate_tests'
+  | 'add_comments'
+  | 'find_bug';
+
+const ACTION_PROMPTS: Record<AIAction, string> = {
+  explain: 'Explain the following code in detail with clear, step-by-step reasoning:',
+  fix: 'Find and fix bugs in the following code. Return the corrected code and explain what was wrong:',
+  optimize: 'Optimize the following code for better performance, readability, and best practices. Return the improved code with a brief explanation:',
+  refactor: 'Refactor the following code to improve readability, maintainability, and structure without changing behavior. Return the refactored code and summarize key improvements:',
+  generate_tests: 'Generate comprehensive unit tests for the following code. Cover normal cases, edge cases, and error cases:',
+  add_comments: 'Add clear, professional comments to the following code. Preserve the original code and annotate it thoroughly:',
+  find_bug: 'Analyze the following code for potential bugs, logic errors, and edge cases. List each issue with an explanation and suggested fix:',
+};
+
 function buildSystemPrompt(language: string, code: string, context: string) {
   return `You are CodeSync AI, an expert coding assistant embedded in a collaborative code editor. 
 You help developers with:
@@ -33,11 +52,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, code, language, context } = body;
+    const { message, code, language, context, action } = body;
 
-    if (!message) {
+    if (!message && !action) {
       return NextResponse.json(
-        { error: 'Message is required' },
+        { error: 'Message or action is required' },
         { status: 400 }
       );
     }
@@ -51,6 +70,13 @@ export async function POST(request: NextRequest) {
     }
 
     const systemPrompt = buildSystemPrompt(language, code, context);
+
+    let userPrompt = message;
+    const validAction = action && typeof action === 'string' && action in ACTION_PROMPTS ? action as AIAction : null;
+    if (validAction) {
+      const selectedCode = body.selectedCode || code || '';
+      userPrompt = `${ACTION_PROMPTS[validAction]}\n\n\`\`\`${language || 'javascript'}\n${selectedCode}\n\`\`\``;
+    }
 
     const response = await fetch(
       `${GOOGLE_API_BASE}/models/gemini-3-flash-preview:generateContent?key=${GOOGLE_API_KEY}`,
@@ -66,11 +92,11 @@ export async function POST(request: NextRequest) {
           contents: [
             {
               role: 'user',
-              parts: [{ text: message }],
+              parts: [{ text: userPrompt }],
             },
           ],
           generationConfig: {
-            maxOutputTokens: 1000,
+            maxOutputTokens: 2000,
             temperature: 0.7,
           },
         }),
@@ -90,7 +116,7 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
     const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
 
-    return NextResponse.json({ response: aiResponse, provider: 'gemini' });
+    return NextResponse.json({ response: aiResponse, provider: 'gemini', action: validAction });
   } catch (error: any) {
     console.error('AI assistant error:', error?.message || error);
     return NextResponse.json(

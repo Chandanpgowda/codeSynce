@@ -287,6 +287,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
+  const [selectedAIAction, setSelectedAIAction] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
@@ -1331,6 +1332,90 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         },
       })),
       {
+        id: 'ai-explain',
+        label: 'AI: Explain Selection',
+        icon: '📖',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('explain');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-fix',
+        label: 'AI: Fix Code',
+        icon: '🔧',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('fix');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-optimize',
+        label: 'AI: Optimize',
+        icon: '⚡',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('optimize');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-refactor',
+        label: 'AI: Refactor',
+        icon: '🧹',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('refactor');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-generate-tests',
+        label: 'AI: Generate Tests',
+        icon: '🧪',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('generate_tests');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-add-comments',
+        label: 'AI: Add Comments',
+        icon: '📝',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('add_comments');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-find-bug',
+        label: 'AI: Find Bug',
+        icon: '🐛',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('find_bug');
+          setActivePanel('ai');
+        },
+      },
+      {
         id: 'close-tab',
         label: 'Close Current Tab',
         icon: '✕',
@@ -1355,7 +1440,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         },
       },
     ];
-  }, [project, activeFile, openTabs, showMinimap, showSidebar, showTerminal, showBreadcrumbs, formatDocument, saveFile, closeTab, openFileInTab, fetchProject, setRefreshKey]);
+  }, [project, activeFile, openTabs, showMinimap, showSidebar, showTerminal, showBreadcrumbs, formatDocument, saveFile, closeTab, openFileInTab, fetchProject, setRefreshKey, statistics.selectedText, setActivePanel, selectedAIAction, setSelectedAIAction]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -1405,6 +1490,11 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           delete dirtyTabsRef.current[activeFile.path];
         }
       }
+      // Ctrl+Shift+A: Open AI panel
+      else if (ctrlOrCmd && e.shiftKey && e.key === 'a' && !isInput) {
+        e.preventDefault();
+        setActivePanel('ai');
+      }
       // Ctrl+E: Focus file explorer (use Ctrl+Shift+E to avoid conflicts)
       else if (ctrlOrCmd && e.shiftKey && e.key === 'e' && !isInput) {
         e.preventDefault();
@@ -1414,7 +1504,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [commandPaletteOpen, activeFile, closeTab, saveFile, setShowSidebar, setShowTerminal]);
+  }, [commandPaletteOpen, activeFile, closeTab, saveFile, setShowSidebar, setShowTerminal, setActivePanel]);
 
   // File search for command palette quick open
   const searchFiles = useCallback((query: string): { path: string; name: string }[] => {
@@ -1965,6 +2055,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                       {statistics.selectedText.length} chars selected
                     </span>
                   )}
+                  {statistics.selectedText && (
+                    <button
+                      onClick={() => {
+                        setActivePanel('ai');
+                      }}
+                      className="flex items-center gap-1 hover:bg-white/20 rounded px-1.5 py-0.5 transition-colors"
+                      title="AI Actions (Ctrl+Shift+A)"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      <span className="font-medium">AI</span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   {/* Sync status */}
@@ -2042,6 +2146,14 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     code={activeFile?.content || ''}
                     language={activeFile?.language || 'javascript'}
                     projectName={project.name}
+                    selectedCode={statistics.selectedText || ''}
+                    selectedAction={selectedAIAction}
+                    onActionExecuted={() => setSelectedAIAction(null)}
+                    onAction={(action, result) => {
+                      if (action !== 'chat') {
+                        console.log('AI action:', action, result);
+                      }
+                    }}
                   />
                 )}
                 {activePanel === 'members' && (
