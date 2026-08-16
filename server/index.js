@@ -387,50 +387,9 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Add rate limiting for messages
-  const messageRateLimit = new Map();
-
-  socket.on('send-message', async (data) => {
-    if (!data || !data.projectId || !data.user) {
-      return;
-    }
-
-    const userId = data.user._id || data.user.id;
-    const now = Date.now();
-    const key = `${data.projectId}:${userId}`;
-
-    // Check rate limit (max 10 messages per 5 seconds)
-    if (messageRateLimit.has(key)) {
-      const timestamps = messageRateLimit.get(key);
-      const recentMessages = timestamps.filter((ts) => now - ts < 5000);
-
-      if (recentMessages.length >= 10) {
-        console.error('Rate limit exceeded for user:', userId);
-        return;
-      }
-
-      timestamps.push(now);
-      messageRateLimit.set(key, timestamps);
-    } else {
-      messageRateLimit.set(key, [now]);
-    }
-
-    // Clean up old entries
-    setTimeout(() => {
-      if (messageRateLimit.has(key)) {
-        const timestamps = messageRateLimit.get(key);
-        const filtered = timestamps.filter((ts) => now - ts < 5000);
-        if (filtered.length === 0) {
-          messageRateLimit.delete(key);
-        } else {
-          messageRateLimit.set(key, filtered);
-        }
-      }
-    }, 6000);
-  });
-
   socket.on('disconnect', () => {
     const { projectId, user } = socket.data;
+
     if (projectId && projectUsers.has(projectId)) {
       projectUsers.get(projectId).delete(socket.id);
 
