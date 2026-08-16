@@ -17,7 +17,7 @@ export default async function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>
-              <span className="text-xl font-bold text-white">Code<span className="text-primary-500">Synce</span></span>
+              <span className="text-xl font-bold text-white">Code<span className="text-primary-500">Sync</span></span>
             </div>
             <div className="flex items-center gap-4">
               {session?.user ? (

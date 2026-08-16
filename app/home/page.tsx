@@ -227,7 +227,7 @@ export default function HomePage() {
               </div>
               <div>
                 <span className="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                  Code<span className="text-primary-400">Synce</span>
+                  Code<span className="text-primary-400">Sync</span>
                 </span>
                 <p className="text-[10px] text-gray-500 -mt-0.5">Collaborative Coding</p>
               </div>
