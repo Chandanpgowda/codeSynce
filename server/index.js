@@ -47,6 +47,13 @@ const ProjectSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     message: String,
     timestamp: Date,
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    codeSnippetLanguage: String,
+    codeSnippetCode: String,
+    mentions: [String],
+    fileReferenceProject: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+    fileReferencePath: String,
+    fileReferenceLine: Number,
   }],
 }, { timestamps: true });
 
@@ -158,7 +165,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { projectId, message, user } = data;
+    const { projectId, message, user, replyTo, codeSnippet, mentions, fileReference } = data;
 
     // Validate required fields
     if (!projectId || !message || !user) {
@@ -181,6 +188,10 @@ io.on('connection', (socket) => {
       },
       message: sanitizedMessage,
       timestamp: new Date().toISOString(),
+      replyTo: replyTo || undefined,
+      codeSnippet: codeSnippet || undefined,
+      mentions: mentions || [],
+      fileReference: fileReference || undefined,
     };
 
     // Broadcast to all users in the project
@@ -194,6 +205,13 @@ io.on('connection', (socket) => {
             user: user?._id || user?.id,
             message: sanitizedMessage,
             timestamp: new Date(),
+            replyTo: replyTo || undefined,
+            codeSnippetLanguage: codeSnippet?.language || undefined,
+            codeSnippetCode: codeSnippet?.code || undefined,
+            mentions: mentions || [],
+            fileReferenceProject: fileReference?.projectId || undefined,
+            fileReferencePath: fileReference?.filePath || undefined,
+            fileReferenceLine: fileReference?.lineNumber || undefined,
           },
         },
       });

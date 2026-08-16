@@ -3,6 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 
+interface Mentions {
+  users: Array<{ _id: string; name: string; image?: string }>;
+  mentionedIn: string;
+}
+
 interface ChatMessage {
   user: {
     _id: string;
@@ -11,6 +16,22 @@ interface ChatMessage {
   };
   message: string;
   timestamp: string;
+  replyTo?: {
+    user: {
+      name: string;
+    };
+    message: string;
+  };
+  codeSnippet?: {
+    language: string;
+    code: string;
+  };
+  mentions: string[];
+  fileReference?: {
+    projectId: string;
+    filePath: string;
+    lineNumber: number;
+  };
 }
 
 interface ChatPanelProps {
@@ -22,6 +43,49 @@ interface ChatPanelProps {
     name?: string | null;
     image?: string | null;
   } | null;
+}
+
+function parseMarkdown(text: string): string {
+  // Basic markdown parsing - convert # headings, **bold**, *italic*, `code`, and links
+  if (!text) return '';
+
+  // Convert code blocks (``` ... ```)
+  let result = text.replace(/```([\s\S]*?)```/g, (match, code) => {
+    return `<pre className="bg-dark-800 p-3 rounded-md text-sm overflow-x-auto"><code className="text-primary-400">${code.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">")}</code></pre>`;
+  });
+
+  // Convert inline code (`text`)
+  result = result.replace(/`([^`]+)`/g, (match, code) => {
+    return `<code className="bg-dark-700 px-1 py-0.5 rounded text-sm">${code}</code>`;
+  });
+
+  // Convert **bold**
+  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Convert *italic* (but not **)
+  result = result.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
+
+  // Convert # headings
+  result = result.replace(/^# (.+)$/gm, '<h4 className="text-xl font-bold text-white mb-2">$1</h4>');
+
+  // Convert links [text](url)
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" className="text-primary-400 underline" rel="noopener noreferrer">$1</a>');
+
+  // Convert @mentions
+  result = result.replace(/@(\w+)/g, (match, username) => {
+    return `<span className="relative inline-flex items-center text-xs font-medium text-primary-600 hover:underline" title="@${username}">
+      @${username}
+      <span className="absolute -bottom-1 -right-0.5 w-3 h-3 rounded-full bg-primary-600 text-xs text-white">
+        <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7a6 6 0 016 6z" />
+        </span>
+      </span>`;
+  });
+
+  // Convert newlines to br
+  result = result.replace(/\n/g, '<br />');
+
+  return result;
 }
 
 export default function ChatPanel({ projectId, messages, socket, currentUser }: ChatPanelProps) {
@@ -59,6 +123,32 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
     }
   };
 
+  const getUserColor = (userId: string) => {
+    const colors = [
+      '#f94144', '#f3722c', '#f8961e', '#f9c74f',
+      '#90be6d', '#43aa8b', '#4d908e', '#577590',
+      '#277da1', '#e63946', '#f4a261', '#2a9d8f',
+      '#e76f51', '#8ecae6', '#ffb703', '#fb8500',
+      '#06d6a0', '#118ab2', '#ef476f', '#8338ec',
+      '#3a86ff', '#ff006e', '#7b2cbf', '#00bbf9',
+    ];
+    let hash = 0;
+    const str = String(userId || '');
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  const getInitials = (name: string): string => {
+    return name
+      ?.split(' ')
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '?';
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
@@ -72,6 +162,8 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
 
         {messages.map((msg, index) => {
           const isOwn = msg.user?._id === currentUser?.id;
+          const mentionedUsers = msg.mentions || [];
+          
           return (
             <div key={index} className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] ${isOwn ? 'text-right' : 'text-left'}`}>
@@ -92,7 +184,52 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
                       : 'bg-dark-700 text-gray-200 rounded-bl-none'
                   }`}
                 >
-                  {msg.message}
+                  {msg.replyTo && !isOwn && (
+                    <div className="mb-2 p-2 bg-primary-600/10 rounded border border-primary-600/20">
+                      <div className="text-xs text-primary-400 mb-1">
+                        Replying to {msg.replyTo.user?.name}: 
+                        <span className="font-medium text-primary-400">{msg.replyTo.message}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div
+                    dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.message) }}
+                  />
+                  {msg.codeSnippet && (
+                    <div className="mt-2 bg-dark-800 p-3 rounded-md text-sm overflow-x-auto">
+                      <pre>
+                        <code className="text-primary-400">
+                          {msg.codeSnippet.code}
+                        </code>
+                      </pre>
+                    </div>
+                  )}
+                  {msg.mentions && msg.mentions.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      {msg.mentions.map((mention, i) => (
+                        <span key={i} className="relative inline-flex items-center text-primary-600 hover:underline">
+                          @{mention}
+                          <span className="absolute -bottom-1 -right-0.5 w-3 h-3 rounded-full bg-primary-600 text-xs text-white">
+                            <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7a6 6 0 016 6z" />
+                            </svg>
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {msg.fileReference && (
+                    <div className="mt-2">
+                      <div className="text-xs text-primary-500 cursor-pointer hover:underline" 
+                        onClick={() => {
+                          // Navigate to the file/line
+                          window.location.href = `/editor/${msg.fileReference.projectId}`;
+                        }}
+                      >
+                        📄 Jump to {msg.fileReference.filePath.split('/').pop()} (line {msg.fileReference.lineNumber})
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -109,7 +246,7 @@ export default function ChatPanel({ projectId, messages, socket, currentUser }: 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
-            className="input-field text-sm"
+            className="input-field text-sm flex-1"
           />
           <button
             type="submit"

@@ -29,6 +29,13 @@ export interface IProject {
     user: mongoose.Types.ObjectId;
     message: string;
     timestamp: Date;
+    replyTo: mongoose.Types.ObjectId;
+    codeSnippetLanguage: string;
+    codeSnippetCode: string;
+    mentions: string[];
+    fileReferenceProject: mongoose.Types.ObjectId;
+    fileReferencePath: string;
+    fileReferenceLine: number;
   }[];
   creatorName?: string;
   lastEditedAt: Date;
@@ -55,6 +62,13 @@ const ProjectSchema = new Schema<IProject>(
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         message: { type: String },
         timestamp: { type: Date, default: Date.now },
+        replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        codeSnippetLanguage: { type: String },
+        codeSnippetCode: { type: String },
+        mentions: [{ type: String }],
+        fileReferenceProject: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+        fileReferencePath: { type: String },
+        fileReferenceLine: { type: Number },
       },
     ],
   },
