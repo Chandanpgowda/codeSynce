@@ -130,14 +130,23 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         return;
       }
 
+      // Guard against missing/null project data
+      if (!data.project) {
+        setError('Project data not found');
+        return;
+      }
+
       setProject(data.project);
-      setActiveFile(findFirstFile(data.project.files) || null);
+
+      // Guard against missing files array
+      const files = Array.isArray(data.project.files) ? data.project.files : [];
+      setActiveFile(findFirstFile(files) || null);
 
       const userId = session?.user?.id;
-      setIsOwner(data.project.owner._id === userId);
+      setIsOwner(data.project.owner?._id === userId);
       setIsMember(
-        data.project.members.some((m: any) => m._id === userId) ||
-        data.project.owner._id === userId
+        (data.project.members || []).some((m: any) => m._id === userId) ||
+        data.project.owner?._id === userId
       );
 
       // Load chat messages
@@ -145,6 +154,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         setChatMessages(data.project.chatMessages);
       }
     } catch (err) {
+      console.error('fetchProject error:', err);
       setError('Failed to load project');
     } finally {
       setLoading(false);
@@ -321,6 +331,52 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       }
     } catch (err) {
       console.error('Failed to reject request:', err);
+    }
+  };
+
+  // Remove a member (owner only)
+  const handleRemoveMember = async (memberId: string) => {
+    if (!confirm('Remove this member from the project?')) return;
+
+    try {
+      const res = await fetch(
+        `/api/projects/${project?._id}?userId=${memberId}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to remove member');
+        return;
+      }
+
+      fetchProject();
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+      alert('Failed to remove member');
+    }
+  };
+
+  // Clear all chat messages (owner only)
+  const handleClearChat = async () => {
+    if (!confirm('Clear all chat messages? This cannot be undone.')) return;
+
+    try {
+      const res = await fetch(`/api/projects/${project?._id}?clearChat=true`, {
+        method: 'PUT',
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to clear chat');
+        return;
+      }
+
+      setChatMessages([]);
+      alert('Chat messages cleared');
+    } catch (err) {
+      console.error('Failed to clear chat:', err);
+      alert('Failed to clear chat');
     }
   };
 
@@ -617,11 +673,22 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 )}
                 {activePanel === 'members' && (
                   <div className="p-4 space-y-3 overflow-y-auto h-full">
-                    <h3 className="text-sm font-semibold text-white mb-3">
-                      Project Members ({project.members.length + 1})
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-white mb-3">
+                        Project Members ({project.members.length + 1})
+                      </h3>
+                      {isOwner && (
+                        <button
+                          onClick={handleClearChat}
+                          className="text-xs px-2 py-1 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                          title="Clear all chat messages"
+                        >
+                          Clear Chat
+                        </button>
+                      )}
+                    </div>
                     {/* Owner */}
-                    <div className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
+                    <div className="flex items-center justify-between bg-dark-700 rounded-lg p-3">
                       {project.owner.image ? (
                         <img src={project.owner.image} alt={project.owner.name} className="w-8 h-8 rounded-full" />
                       ) : (
@@ -633,23 +700,35 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                         <p className="text-sm font-medium text-white">{project.owner.name}</p>
                         <p className="text-xs text-primary-500">Owner</p>
                       </div>
+                      <span className="text-xs text-gray-500">👑</span>
                     </div>
                     {/* Members */}
                     {project.members
                       .filter((m) => m._id !== project.owner._id)
                       .map((member) => (
-                        <div key={member._id} className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
-                          {member.image ? (
-                            <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
-                          ) : (
-                            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
-                              {member.name.charAt(0).toUpperCase()}
+                        <div key={member._id} className="flex items-center justify-between bg-dark-700 rounded-lg p-3">
+                          <div className="flex items-center gap-3">
+                            {member.image ? (
+                              <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
+                            ) : (
+                              <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
+                                {member.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <p className="text-sm font-medium text-white">{member.name}</p>
+                              <p className="text-xs text-gray-400">Member</p>
                             </div>
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-white">{member.name}</p>
-                            <p className="text-xs text-gray-500">Member</p>
                           </div>
+                          {isOwner && (
+                            <button
+                              onClick={() => handleRemoveMember(member._id)}
+                              className="text-xs px-2 py-1 bg-red-500/10 text-red-400 rounded hover:bg-red-500/20 transition-colors"
+                              title={`Remove ${member.name}`}
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       ))}
                   </div>
