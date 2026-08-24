@@ -64,6 +64,9 @@ const projectUsers = new Map();
 // Store typing timeouts: projectId -> Map<userId, timeout>
 const typingTimeouts = new Map();
 
+// Store chat typing timeouts (separate from code editor typing): projectId -> Map<userId, timeout>
+const chatTypingTimeouts = new Map();
+
 // Generate a consistent color for a user based on their ID
 function getUserColor(userId) {
   const colors = [
@@ -337,6 +340,51 @@ io.on('connection', (socket) => {
       user: data.user,
       users: getOnlineUsers(projectId),
     });
+  });
+
+  // Chat typing indicators (separate from code editor typing)
+  socket.on('chat-typing-start', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    // Auto-clear after 2.5s of inactivity
+    if (!chatTypingTimeouts.has(projectId)) {
+      chatTypingTimeouts.set(projectId, new Map());
+    }
+    const userTimeouts = chatTypingTimeouts.get(projectId);
+    if (userTimeouts.has(userId)) {
+      clearTimeout(userTimeouts.get(userId));
+    }
+    userTimeouts.set(userId, setTimeout(() => {
+      io.to(`project:${projectId}`).emit('chat-typing-stopped', { user: data.user });
+      userTimeouts.delete(userId);
+    }, 2500));
+
+    // Broadcast to everyone else in the room
+    socket.to(`project:${projectId}`).emit('chat-typing-started', { user: data.user });
+  });
+
+  socket.on('chat-typing-stop', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    if (chatTypingTimeouts.has(projectId)) {
+      const userTimeouts = chatTypingTimeouts.get(projectId);
+      if (userTimeouts.has(userId)) {
+        clearTimeout(userTimeouts.get(userId));
+        userTimeouts.delete(userId);
+      }
+    }
+
+    socket.to(`project:${projectId}`).emit('chat-typing-stopped', { user: data.user });
   });
 
   // File changes (broadcast content)

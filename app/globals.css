@@ -345,6 +345,22 @@ kbd {
   animation: typingPillIn 0.25s ease-out forwards;
 }
 
+/* "is typing" watermark overlay on the editor */
+@keyframes typingWatermarkIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.typing-watermark {
+  animation: typingWatermarkIn 0.2s ease-out forwards;
+}
+
 /* Live collaborator status bar */
 .collab-sync-status {
   display: inline-flex;

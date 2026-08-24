@@ -44,6 +44,7 @@ interface ChatPanelProps {
     image?: string | null;
   } | null;
   onSendMessage?: (message: ChatMessage) => Promise<ChatMessage | null>;
+  typingUsers?: Record<string, { name: string }>;
 }
 
 function parseMarkdown(text: string): string {
@@ -89,14 +90,58 @@ function parseMarkdown(text: string): string {
   return result;
 }
 
-export default function ChatPanel({ projectId, messages, socket, currentUser, onSendMessage }: ChatPanelProps) {
+export default function ChatPanel({ projectId, messages, socket, currentUser, onSendMessage, typingUsers }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastChatTypingEmitRef = useRef(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Stop broadcasting the chat typing state when leaving the page
+  useEffect(() => {
+    return () => {
+      if (chatTypingTimeoutRef.current) {
+        clearTimeout(chatTypingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const emitChatTypingStop = () => {
+    if (!socket || !currentUser?.id) return;
+    socket.emit('chat-typing-stop', {
+      projectId,
+      user: { _id: currentUser.id, name: currentUser.name },
+    });
+  };
+
+  // Broadcast "typing" state in the chat while the user composes a message
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    if (!socket || !currentUser?.id) return;
+
+    const now = Date.now();
+    if (value.trim() && now - lastChatTypingEmitRef.current > 800) {
+      lastChatTypingEmitRef.current = now;
+      socket.emit('chat-typing-start', {
+        projectId,
+        user: { _id: currentUser.id, name: currentUser.name },
+      });
+    }
+
+    // Auto-clear the typing state shortly after the user stops typing
+    if (chatTypingTimeoutRef.current) {
+      clearTimeout(chatTypingTimeoutRef.current);
+    }
+    chatTypingTimeoutRef.current = setTimeout(() => {
+      emitChatTypingStop();
+    }, 1500);
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +168,12 @@ export default function ChatPanel({ projectId, messages, socket, currentUser, on
       setIsSending(false);
     }
     if (!savedMessage) return;
+
+    // Message sent - clear the chat typing indicator
+    if (chatTypingTimeoutRef.current) {
+      clearTimeout(chatTypingTimeoutRef.current);
+    }
+    emitChatTypingStop();
 
     // The API is the source of truth; the socket only informs active collaborators.
     if (socket) {
@@ -263,13 +314,32 @@ export default function ChatPanel({ projectId, messages, socket, currentUser, on
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Typing indicator */}
+      {typingUsers && Object.keys(typingUsers).length > 0 && (
+        <div className="px-4 pb-1 flex items-center gap-1.5 text-xs text-gray-400">
+          <span className="flex items-center gap-0.5">
+            <span className="typing-dot" style={{ background: '#4da3ff' }} />
+            <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.2s' }} />
+            <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.4s' }} />
+          </span>
+          <span>
+            {(() => {
+              const names = Object.values(typingUsers).map((t) => t.name);
+              if (names.length === 1) return `${names[0]} is typing...`;
+              if (names.length === 2) return `${names[0]} and ${names[1]} are typing...`;
+              return 'Several people are typing...';
+            })()}
+          </span>
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={handleSend} className="p-3 border-t border-dark-600">
         <div className="flex gap-2">
           <input
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             placeholder="Type a message..."
             className="input-field text-sm flex-1"
           />

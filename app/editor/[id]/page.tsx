@@ -284,6 +284,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [remoteCursors, setRemoteCursors] = useState<Record<string, any>>({});
   const [remoteSelections, setRemoteSelections] = useState<Record<string, any>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; file?: string; color: string }>>({});
+  const [chatTypingUsers, setChatTypingUsers] = useState<Record<string, { name: string }>>({});
   const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
@@ -300,6 +301,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const selectionDecorationsRef = useRef<Record<string, string[]>>({});
   const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const cursorUpdateThrottleRef = useRef<Record<string, number>>({});
+  const activeFilePathRef = useRef<string | null>(null);
+  const lastEmittedContentRef = useRef<Record<string, string>>({});
 
   // Load project
   useEffect(() => {
@@ -385,19 +388,21 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
 
-    socket.emit('join-project', {
+    // Re-used on every (re)connect so the client automatically rejoins the
+    // project room after network drops - no refresh needed.
+    const joinPayload = {
       projectId: project._id,
       user: {
         _id: session?.user?.id,
         name: session?.user?.name,
         image: session?.user?.image,
       },
-    });
+    };
 
     socket.on('user-joined', ({ users }) => {
       setOnlineUsers(users);
@@ -408,7 +413,38 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     });
 
     socket.on('new-message', (msg: ChatMessage) => {
-      setChatMessages((prev) => [...prev, msg]);
+      setChatMessages((prev) => {
+        // De-duplicate: ignore copies of messages already in the list (e.g. the
+        // optimistic copy added from the API response).
+        const isDuplicate = prev.some(
+          (m) =>
+            m.message === msg.message &&
+            m.user?._id === msg.user?._id &&
+            Math.abs(new Date(m.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 2000
+        );
+        if (isDuplicate) return prev;
+        return [...prev, msg];
+      });
+    });
+
+    // Chat typing indicators (a collaborator composing a chat message)
+    socket.on('chat-typing-started', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+      setChatTypingUsers((prev) => ({
+        ...prev,
+        [userId]: { name: data.user?.name || 'Someone' },
+      }));
+    });
+
+    socket.on('chat-typing-stopped', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId) return;
+      setChatTypingUsers((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
     });
 
     // Presence state - initial snapshot of online users
@@ -490,9 +526,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       }
     });
 
-    // Socket connection state
+    // Live code updates from collaborators. Registered once per connection so
+    // it keeps working across reconnects and file switches.
+    socket.on('file-updated', ({ file, content }: { file: string; content: string }) => {
+      if (file !== activeFilePathRef.current) return;
+      applyRemoteContent(content);
+    });
+
+    // Socket connection state - re-join the project room on every (re)connect
     socket.on('connect', () => {
       setSyncStatus('synced');
+      socket.emit('join-project', joinPayload);
     });
 
     socket.on('disconnect', () => {
@@ -509,26 +553,67 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     };
   }, [project?._id, isMember]);
 
-  // Listen for remote file updates
+  // Keep a ref of the active file path for socket handlers (avoids stale closures)
   useEffect(() => {
-    if (!socketRef.current) return;
-
-    const handleFileUpdated = ({ file, content }: { file: string; content: string }) => {
-      if (file === activeFile?.path && editorRef.current) {
-        isRemoteUpdateRef.current = true;
-        editorRef.current.setValue(content);
-        setTimeout(() => {
-          isRemoteUpdateRef.current = false;
-        }, 100);
-      }
-    };
-
-    socketRef.current.on('file-updated', handleFileUpdated);
-
-    return () => {
-      socketRef.current?.off('file-updated', handleFileUpdated);
-    };
+    activeFilePathRef.current = activeFile?.path ?? null;
   }, [activeFile?.path]);
+
+  // Apply content received from a collaborator as a minimal edit so the local
+  // user's caret position and selection are preserved while others type.
+  const applyRemoteContent = useCallback((content: string) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const current = model.getValue();
+    if (current === content) return;
+
+    isRemoteUpdateRef.current = true;
+
+    try {
+      if (!monaco) throw new Error('monaco not ready');
+
+      // Isolate the actual change via common prefix/suffix
+      let start = 0;
+      const minLen = Math.min(current.length, content.length);
+      while (start < minLen && current.charCodeAt(start) === content.charCodeAt(start)) start++;
+
+      let endOld = current.length;
+      let endNew = content.length;
+      while (
+        endOld > start &&
+        endNew > start &&
+        current.charCodeAt(endOld - 1) === content.charCodeAt(endNew - 1)
+      ) {
+        endOld--;
+        endNew--;
+      }
+
+      const selection = editor.getSelection();
+      const startPos = model.getPositionAt(start);
+      const endPos = model.getPositionAt(endOld);
+
+      editor.executeEdits('remote-collab', [
+        {
+          range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+          text: content.slice(start, endNew),
+          forceMoveMarkers: true,
+        },
+      ]);
+
+      // Restore the local user's caret/selection
+      if (selection) editor.setSelection(selection);
+    } catch {
+      editor.setValue(content);
+    } finally {
+      setTimeout(() => {
+        isRemoteUpdateRef.current = false;
+      }, 50);
+    }
+  }, []);
 
   // Cleanup stale remote cursors/selections after 10s of no updates
   useEffect(() => {
@@ -886,8 +971,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }, [project, session?.user?.id, session?.user?.name]);
 
   const handleEditorChange = (value: string | undefined) => {
-    if (!value || !project || !activeFile) return;
     if (isRemoteUpdateRef.current) return;
+    if (value === undefined || !project || !activeFile) return;
 
     // Update local state
     const updatedFile = { ...activeFile, content: value };
@@ -927,12 +1012,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       });
     }, 3000);
 
-    // Broadcast file change to other users
-    socketRef.current?.emit('file-change', {
-      projectId: project._id,
-      file: activeFile.path,
-      content: value,
-    });
+    // Broadcast file change to other users (skip identical payloads)
+    if (lastEmittedContentRef.current[activeFile.path] !== value) {
+      lastEmittedContentRef.current[activeFile.path] = value;
+      socketRef.current?.emit('file-change', {
+        projectId: project._id,
+        file: activeFile.path,
+        content: value,
+      });
+    }
 
     // Auto-save to database so code persists across sessions
     saveFile(activeFile.path, value);
@@ -2029,7 +2117,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               />
 
               {/* Monaco Editor */}
-              <div className="flex-1 min-h-0 vscode-editor-container" style={{ background: bgColor }}>
+              <div className="flex-1 min-h-0 vscode-editor-container relative" style={{ background: bgColor }}>
                 {activeFile && (
                   <Editor
                     key={refreshKey}
@@ -2048,6 +2136,41 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     }}
                   />
                 )}
+
+                {/* Live typing watermark overlay */}
+                {(() => {
+                  const typingHere = Object.entries(typingUsers).filter(
+                    ([id, t]) => id !== session?.user?.id && (!t.file || t.file === activeFile?.path)
+                  );
+                  if (typingHere.length === 0) return null;
+                  const names = typingHere.map(([, t]) => t.name);
+                  const label =
+                    names.length === 1
+                      ? `${names[0]} is typing…`
+                      : names.length === 2
+                      ? `${names[0]} and ${names[1]} are typing…`
+                      : `${names.length} people are typing…`;
+                  const accent = typingHere[0][1].color || '#4da3ff';
+                  return (
+                    <div
+                      className="typing-watermark absolute bottom-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg pointer-events-none"
+                      style={{
+                        background: 'rgba(30, 30, 30, 0.85)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        backdropFilter: 'blur(4px)',
+                      }}
+                    >
+                      <span className="flex items-center gap-0.5">
+                        <span className="typing-dot" style={{ background: accent }} />
+                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.2s' }} />
+                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.4s' }} />
+                      </span>
+                      <span className="text-xs font-medium" style={{ color: '#cfd8dc' }}>
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Status Bar */}
@@ -2154,6 +2277,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     socket={socketRef.current}
                     currentUser={session?.user ?? null}
                     onSendMessage={handleSendChatMessage}
+                    typingUsers={chatTypingUsers}
                   />
                 )}
                 {activePanel === 'ai' && (
