@@ -5,6 +5,9 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Editor from '@monaco-editor/react';
 import { io, Socket } from 'socket.io-client';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { MonacoBinding } from 'y-monaco';
 import ChatPanel from '@/components/ChatPanel';
 import AIPanel from '@/components/AIPanel';
 import type { ChatMessage } from '@/components/ChatPanel';
@@ -248,6 +251,16 @@ function getFileIcon(file: ProjectFile): string {
   return icons[file.language || ''] || '📄';
 }
 
+// Convert an http(s) URL to a websocket URL for the Yjs /collab endpoint
+function toWsUrl(url: string): string {
+  const wsUrl = url.startsWith('https://')
+    ? url.replace('https://', 'wss://')
+    : url.startsWith('http://')
+    ? url.replace('http://', 'ws://')
+    : url;
+  return `${wsUrl.replace(/\/+$/, '')}/collab`;
+}
+
 export const dynamic = 'force-dynamic';
 
 export default function EditorPage({ params }: { params: { id: string } }) {
@@ -293,6 +306,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const yproviderRef = useRef<WebsocketProvider | null>(null);
+  const ybindingRef = useRef<MonacoBinding | null>(null);
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedContentRef = useRef<Record<string, string>>({});
@@ -392,6 +408,27 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
+
+    // Set up Yjs collaborative editing provider (connects to /collab endpoint)
+    try {
+      if (!socketUrl) throw new Error('No socket URL available for Yjs provider');
+
+      const ydoc = new Y.Doc();
+      ydocRef.current = ydoc;
+
+      const provider = new WebsocketProvider(toWsUrl(socketUrl), project._id, ydoc, {
+        connect: true,
+      });
+      yproviderRef.current = provider;
+
+      // Set user awareness info (name + color) for remote cursors
+      provider.awareness.setLocalStateField('user', {
+        name: session?.user?.name || 'Anonymous',
+        color: '#4da3ff',
+      });
+    } catch (err) {
+      console.error('[CodeSync] Failed to set up Yjs provider:', err);
+    }
 
     // Re-used on every (re)connect so the client automatically rejoins the
     // project room after network drops - no refresh needed.
@@ -528,7 +565,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     // Live code updates from collaborators. Registered once per connection so
     // it keeps working across reconnects and file switches.
+    // When the Yjs binding is active, Yjs handles the realtime sync, so we
+    // skip the socket-based fallback to avoid double-applying content.
     socket.on('file-updated', ({ file, content }: { file: string; content: string }) => {
+      if (ybindingRef.current) return;
       if (file !== activeFilePathRef.current) return;
       applyRemoteContent(content);
     });
@@ -550,6 +590,18 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     return () => {
       socket.emit('leave-project', { projectId: project._id });
       socket.disconnect();
+
+      // Clean up Yjs provider and binding
+      try {
+        ybindingRef.current?.destroy();
+        ybindingRef.current = null;
+        yproviderRef.current?.destroy();
+        yproviderRef.current = null;
+        ydocRef.current?.destroy();
+        ydocRef.current = null;
+      } catch (err) {
+        console.error('[CodeSync] Failed to clean up Yjs:', err);
+      }
     };
   }, [project?._id, isMember]);
 
@@ -829,6 +881,30 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     // Set initial theme
     monaco.editor.setTheme(theme);
 
+    // Bind the Monaco model to the Yjs document for realtime collaboration
+    try {
+      const ydoc = ydocRef.current;
+      const provider = yproviderRef.current;
+      if (ydoc && provider) {
+        const model = editor.getModel();
+        if (model) {
+          // Get or create a Y.Text for this file path
+          const ytext = ydoc.getText(activeFile?.path || 'default');
+          if (ytext.toString() === '' && activeFile?.content) {
+            ytext.insert(0, activeFile.content);
+          }
+          ybindingRef.current = new MonacoBinding(
+            ytext,
+            model,
+            new Set([editor]),
+            provider.awareness
+          );
+        }
+      }
+    } catch (err) {
+      console.error('[CodeSync] Failed to bind Yjs to Monaco:', err);
+    }
+
     // Track cursor position for status bar
     editor.onDidChangeCursorPosition((e: any) => {
       const model = editor.getModel();
@@ -1012,8 +1088,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       });
     }, 3000);
 
-    // Broadcast file change to other users (skip identical payloads)
-    if (lastEmittedContentRef.current[activeFile.path] !== value) {
+    // Broadcast file change to other users (skip identical payloads).
+    // When the Yjs binding is active, Yjs handles the realtime sync, so we
+    // skip the socket-based fallback to avoid double-broadcasting.
+    if (!ybindingRef.current && lastEmittedContentRef.current[activeFile.path] !== value) {
       lastEmittedContentRef.current[activeFile.path] = value;
       socketRef.current?.emit('file-change', {
         projectId: project._id,
