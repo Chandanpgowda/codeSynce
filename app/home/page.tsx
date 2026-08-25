@@ -9,6 +9,7 @@ import NotificationBell from '@/components/NotificationBell';
 import ProfileSettings from '@/components/ProfileSettings';
 import ShareProjectModal from '@/components/ShareProjectModal';
 import AntigravityEffect from '@/components/AntigravityEffect';
+import SpecularButton from '@/components/reactbits/SpecularButton';
 
 interface User {
   _id: string;
@@ -257,24 +258,28 @@ export default function HomePage() {
 
             {/* Actions */}
             <div className="flex items-center gap-2">
-              <button
+              <SpecularButton
+                size="sm"
+                radius={10}
                 onClick={() => setShowCreateModal(true)}
-                className="hidden sm:flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-all hover:shadow-lg hover:shadow-primary-500/25 hover:-translate-y-px"
+                className="hidden sm:flex items-center gap-2 !bg-primary-600 hover:!bg-primary-700 !text-white !text-sm font-semibold !py-2 !px-4 transition-all hover:shadow-lg hover:shadow-primary-500/25 hover:-translate-y-px"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
                 Create Project
-              </button>
+              </SpecularButton>
 
               {/* Notifications */}
               {session?.user?.id && <NotificationBell userId={session.user.id} />}
 
               {/* Profile / Settings */}
               <div className="relative ml-1">
-                <button
+                <SpecularButton
+                  size="sm"
+                  radius={14}
                   onClick={() => setShowProfileSettings(true)}
-                  className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/5 transition-colors group"
+                  className="flex items-center gap-2 !p-1.5 hover:bg-white/5 transition-colors group"
                 >
                   {session?.user?.image ? (
                     <img
@@ -290,7 +295,7 @@ export default function HomePage() {
                   <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
-                </button>
+                </SpecularButton>
               </div>
             </div>
           </div>
@@ -357,35 +362,41 @@ export default function HomePage() {
 
         {/* Create Project Mobile Button */}
         <div className="sm:hidden mb-6">
-          <button
+          <SpecularButton
+            size="md"
+            radius={14}
             onClick={() => setShowCreateModal(true)}
-            className="w-full flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-lg shadow-primary-500/20"
+            className="w-full flex items-center justify-center gap-2 !bg-primary-600 hover:!bg-primary-700 !text-white font-semibold !py-3 !px-4 transition-all shadow-lg shadow-primary-500/20"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Create New Project
-          </button>
+          </SpecularButton>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-[#161b22] border border-white/5 rounded-xl p-1 w-fit">
-          <button
+          <SpecularButton
+            size="sm"
+            radius={10}
             onClick={() => setActiveView('all')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`!px-4 !py-2 !text-sm font-medium transition-all !rounded-[10px] ${
               activeView === 'all'
-                ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                ? '!bg-primary-600 !text-white shadow-md shadow-primary-500/20'
+                : '!text-gray-400 hover:!text-white hover:!bg-white/5'
             }`}
           >
             All Projects
-          </button>
-          <button
+          </SpecularButton>
+          <SpecularButton
+            size="sm"
+            radius={10}
             onClick={() => setActiveView('mine')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`!px-4 !py-2 !text-sm font-medium transition-all !rounded-[10px] ${
               activeView === 'mine'
-                ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                ? '!bg-primary-600 !text-white shadow-md shadow-primary-500/20'
+                : '!text-gray-400 hover:!text-white hover:!bg-white/5'
             }`}
           >
             My Projects
@@ -396,13 +407,15 @@ export default function HomePage() {
                 {myProjects.length}
               </span>
             )}
-          </button>
-          <button
+          </SpecularButton>
+          <SpecularButton
+            size="sm"
+            radius={10}
             onClick={() => setActiveView('collaborating')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            className={`!px-4 !py-2 !text-sm font-medium transition-all !rounded-[10px] ${
               activeView === 'collaborating'
-                ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-white/5'
+                ? '!bg-primary-600 !text-white shadow-md shadow-primary-500/20'
+                : '!text-gray-400 hover:!text-white hover:!bg-white/5'
             }`}
           >
             Collaborating
@@ -413,7 +426,7 @@ export default function HomePage() {
                 {collaboratingProjects.length}
               </span>
             )}
-          </button>
+          </SpecularButton>
         </div>
 
         {/* Projects Section */}
@@ -525,14 +538,16 @@ export default function HomePage() {
                       {/* Pending requests (owner) */}
                       {isOwner && project.pendingRequests.length > 0 && (
                         <div className="relative group/req">
-                          <button
-                            className="flex items-center gap-1 text-xs px-2 py-1 bg-yellow-500/10 text-yellow-400 rounded-lg hover:bg-yellow-500/20 transition-colors"
+                          <SpecularButton
+                            size="sm"
+                            radius={8}
+                            className="flex items-center gap-1 !text-xs !px-2 !py-1 !bg-yellow-500/10 !text-yellow-400 hover:!bg-yellow-500/20 transition-colors"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
                             {project.pendingRequests.length} pending
-                          </button>
+                          </SpecularButton>
                           {/* Request dropdown */}
                           <div className="hidden group-hover/req:block absolute right-0 top-full mt-2 w-72 bg-[#1c2128] border border-white/10 rounded-xl shadow-2xl z-30 overflow-hidden">
                             <div className="px-4 py-2 bg-white/5 text-xs font-semibold text-gray-300">
@@ -557,18 +572,22 @@ export default function HomePage() {
                                   </span>
                                 </div>
                                 <div className="flex gap-1 shrink-0">
-                                  <button
+                                  <SpecularButton
+                                    size="sm"
+                                    radius={8}
                                     onClick={() => handleRequestAction(project._id, requester._id, 'accept')}
-                                    className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors"
+                                    className="!text-xs !px-2 !py-1 !bg-green-500/20 !text-green-400 hover:!bg-green-500/30 transition-colors"
                                   >
                                     Accept
-                                  </button>
-                                  <button
+                                  </SpecularButton>
+                                  <SpecularButton
+                                    size="sm"
+                                    radius={8}
                                     onClick={() => handleRequestAction(project._id, requester._id, 'reject')}
-                                    className="text-xs px-2 py-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
+                                    className="!text-xs !px-2 !py-1 !bg-red-500/20 !text-red-400 hover:!bg-red-500/30 transition-colors"
                                   >
                                     Reject
-                                  </button>
+                                  </SpecularButton>
                                 </div>
                               </div>
                             ))}
@@ -611,46 +630,46 @@ export default function HomePage() {
                            </svg>
                            Open Editor
                          </Link>
-                         <button
+                         <SpecularButton size="sm" radius={10}
                            onClick={() => setShowShareProject(project._id)}
-                           className="flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-white/10 text-gray-300 hover:text-white text-sm font-medium py-2 px-3 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                           className="flex items-center justify-center gap-2 !bg-white/[0.05] hover:!bg-white/10 !text-gray-300 hover:!text-white !text-sm font-medium !py-2 !px-3 !rounded-[10px] transition-all border border-white/10 hover:border-primary-500/40"
                            title="Share project"
                          >
                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.5 9 12c0-.5-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 110 2.684m0-2.684l6.632 3.316m-6.632-6a3 3 0 110-2.684m0 2.684l6.632-3.316" />
                            </svg>
                            Share
-                         </button>
+                         </SpecularButton>
                        </>
                      ) : isPending ? (
-                       <button
+                       <SpecularButton size="sm" radius={10}
                          onClick={() => handleCancelJoinRequest(project._id)}
-                         className="flex-1 flex items-center justify-center gap-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 text-sm font-medium py-2 rounded-lg transition-colors border border-yellow-500/20"
+                         className="flex-1 flex items-center justify-center gap-2 !bg-yellow-500/10 hover:!bg-yellow-500/20 !text-yellow-400 !text-sm font-medium !py-2 !rounded-[10px] transition-colors border border-yellow-500/20"
                        >
                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                          </svg>
                          Pending... Cancel
-                       </button>
+                       </SpecularButton>
                      ) : (
                        <>
-                         <button
+                         <SpecularButton size="sm" radius={10}
                            onClick={() => handleJoinRequest(project._id)}
-                           className="flex-1 flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-primary-600/20 text-gray-300 hover:text-white text-sm font-medium py-2 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                           className="flex-1 flex items-center justify-center gap-2 !bg-white/[0.05] hover:!bg-primary-600/20 !text-gray-300 hover:!text-white !text-sm font-medium !py-2 !rounded-[10px] transition-all border border-white/10 hover:border-primary-500/40"
                          >
                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                            </svg>
                            Join Project
-                         </button>
+                         </SpecularButton>
                          {project.isPublic && (
-                           <button
+                           <SpecularButton size="sm" radius={10}
                              onClick={() => {
                                navigator.clipboard.writeText(`${window.location.origin}/editor/${project._id}`);
                                setCopiedId(project._id);
                                setTimeout(() => setCopiedId(null), 2000);
                              }}
-                             className="flex items-center justify-center gap-2 bg-white/[0.05] hover:bg-white/10 text-gray-300 hover:text-white text-sm font-medium py-2 px-3 rounded-lg transition-all border border-white/10 hover:border-primary-500/40"
+                             className="flex items-center justify-center gap-2 !bg-white/[0.05] hover:!bg-white/10 !text-gray-300 hover:!text-white !text-sm font-medium !py-2 !px-3 !rounded-[10px] transition-all border border-white/10 hover:border-primary-500/40"
                              title="Copy project link"
                            >
                              {copiedId === project._id ? (
@@ -668,7 +687,7 @@ export default function HomePage() {
                                  Copy Link
                                </>
                              )}
-                           </button>
+                           </SpecularButton>
                          )}
                         </>
                       )}
@@ -703,14 +722,14 @@ export default function HomePage() {
                     : 'Get started by creating your first project'}
             </p>
             <div className="flex justify-center gap-3">
-              <button
+              <SpecularButton size="md" radius={10}
                 onClick={() => setShowCreateModal(true)}
                 className="btn-primary"
               >
                 + Create Project
-              </button>
+              </SpecularButton>
               {(activeView === 'mine' || (search && activeView === 'all')) && (
-                <button
+                <SpecularButton size="sm" radius={10}
                   onClick={() => {
                     setSearch('');
                     setActiveView('all');
@@ -718,7 +737,7 @@ export default function HomePage() {
                   className="btn-secondary"
                 >
                   View All Projects
-                </button>
+                </SpecularButton>
               )}
             </div>
           </div>
