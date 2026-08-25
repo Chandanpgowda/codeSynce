@@ -8,10 +8,10 @@ import CreateProjectModal from '@/components/CreateProjectModal';
 import NotificationBell from '@/components/NotificationBell';
 import ProfileSettings from '@/components/ProfileSettings';
 import ShareProjectModal from '@/components/ShareProjectModal';
-import AntigravityEffect from '@/components/AntigravityEffect';
 import SpecularButton from '@/components/reactbits/SpecularButton';
 import MagicBento from '@/components/reactbits/MagicBento';
 import DarkVeil from '@/components/reactbits/DarkVeil';
+import TargetCursor from '@/components/reactbits/TargetCursor';
 
 interface User {
   _id: string;
@@ -219,13 +219,8 @@ export default function HomePage() {
       <div aria-hidden="true" className="fixed inset-0 -z-20 pointer-events-none overflow-hidden">
         <DarkVeil hueShift={0} noiseIntensity={0.05} scanlineIntensity={0.1} scanlineFrequency={8} warpAmount={0.15} speed={0.35} />
       </div>
-      {/* Antigravity particle effect background */}
-      <div
-        aria-hidden="true"
-        className="fixed inset-0 -z-10 flex justify-center pointer-events-none overflow-hidden"
-      >
-        <AntigravityEffect />
-      </div>
+      {/* TargetCursor custom cursor */}
+      <TargetCursor targetSelector="a, button" spinDuration={2} hideDefaultCursor parallaxOn />
       {/* Navbar */}
       <nav className="border-b border-white/5 bg-[#0d1117]/80 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
