@@ -8,6 +8,7 @@ import CreateProjectModal from '@/components/CreateProjectModal';
 import NotificationBell from '@/components/NotificationBell';
 import ProfileSettings from '@/components/ProfileSettings';
 import ShareProjectModal from '@/components/ShareProjectModal';
+import AntigravityEffect from '@/components/AntigravityEffect';
 
 interface User {
   _id: string;
@@ -210,7 +211,14 @@ export default function HomePage() {
   const projectCount = myProjects.length + collaboratingProjects.length;
 
   return (
-    <div className="min-h-screen bg-[#0a0e17]">
+    <div className="min-h-screen bg-[#0a0e17] isolate">
+      {/* Antigravity particle effect background */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 -z-10 flex justify-center pointer-events-none overflow-hidden"
+      >
+        <AntigravityEffect />
+      </div>
       {/* Navbar */}
       <nav className="border-b border-white/5 bg-[#0d1117]/80 backdrop-blur-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
