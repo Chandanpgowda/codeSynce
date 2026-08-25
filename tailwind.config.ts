@@ -9,7 +9,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // shadcn-style semantic tokens (backed by CSS vars in globals.css)
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        card: 'var(--card)',
+        border: 'var(--border)',
+        muted: {
+          DEFAULT: 'var(--muted)',
+          foreground: 'var(--muted-foreground)',
+        },
+        accent: 'var(--accent)',
+        destructive: 'var(--destructive)',
+        secondary: 'var(--secondary)',
         primary: {
+          DEFAULT: 'var(--primary)',
+          foreground: 'var(--primary-foreground)',
           50: '#eff6ff',
           100: '#dbeafe',
           200: '#bfdbfe',

@@ -6,6 +6,31 @@
   --foreground-rgb: 255, 255, 255;
   --background-start-rgb: 13, 17, 23;
   --background-end-rgb: 13, 17, 23;
+
+  /* ==== shadcn-style theme tokens (dark, blue accent) ====
+     Used by components/ui/* (sign-up glass UI etc.) */
+  --background: #0b1220;
+  --foreground: #e6edf7;
+  --card: #0e1626;
+  --border: rgba(148, 163, 184, 0.16);
+  --muted: #16233a;
+  --muted-foreground: #94a3b8;
+  --accent: #60a5fa;
+  --destructive: #ef4444;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1d4ed8;
+
+  /* Raw color vars consumed by the animated SVG gradient background */
+  --color-primary: #3b82f6;
+  --color-secondary: #1d4ed8;
+  --color-accent: #60a5fa;
+  --color-destructive: #ef4444;
+  --color-chart-1: #38bdf8;
+  --color-chart-2: #818cf8;
+  --color-chart-3: #22d3ee;
+  --color-chart-4: #6366f1;
+  --color-chart-5: #0ea5e9;
 }
 
 body {
