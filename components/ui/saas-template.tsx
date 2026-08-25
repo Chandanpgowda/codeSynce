@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import AntigravityEffect from '@/components/AntigravityEffect';
 
 // Inline Button Component
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -252,8 +253,16 @@ const Hero = React.memo(({ isAuthenticated = false }: SaasTemplateProps) => {
   return (
     <section
       id="getting-started"
-      className="saas-hero relative min-h-screen flex flex-col items-center justify-start px-6 pt-32 pb-20 md:pt-36 md:pb-24"
+      className="saas-hero relative min-h-screen flex flex-col items-center justify-start px-6 pt-32 pb-20 md:pt-36 md:pb-24 overflow-hidden"
     >
+      {/* Antigravity particle effect background */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 flex justify-center pointer-events-none z-0"
+        style={{ opacity: 0.55 }}
+      >
+        <AntigravityEffect />
+      </div>
       <aside className="mb-8 inline-flex flex-wrap items-center justify-center gap-2 px-4 py-2 rounded-full border border-gray-700 bg-gray-800/50 backdrop-blur-sm max-w-full">
         <span className="text-xs text-center whitespace-nowrap" style={{ color: '#9ca3af' }}>
           New version is out — realtime collaboration & AI assistant!
