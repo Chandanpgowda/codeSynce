@@ -302,6 +302,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
   const [selectedAIAction, setSelectedAIAction] = useState<string | null>(null);
+  // Socket exposed to child components via state (a ref mutation alone doesn't
+  // re-render, so children would see null until some unrelated state changed).
+  const [socketInstance, setSocketInstance] = useState<Socket | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  // Bumped on every Monaco mount so the Yjs binding effect re-runs even when
+  // the editor remounts (e.g. refreshKey changes) with a brand-new model.
+  const [editorMountId, setEditorMountId] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
@@ -319,6 +326,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const cursorUpdateThrottleRef = useRef<Record<string, number>>({});
   const activeFilePathRef = useRef<string | null>(null);
   const lastEmittedContentRef = useRef<Record<string, string>>({});
+
+  // Switch the active file. Detaches any active Yjs binding FIRST so that the
+  // controlled `value` prop update (which rewrites the whole Monaco model)
+  // cannot leak the incoming file's content into the previous file's shared
+  // Y.Text through a stale binding.
+  const switchActiveFile = useCallback((file: ProjectFile | null) => {
+    try {
+      ybindingRef.current?.destroy();
+    } catch (_) {
+      // ignore - binding may already be destroyed
+    }
+    ybindingRef.current = null;
+    setActiveFile(file);
+  }, []);
 
   // Load project
   useEffect(() => {
@@ -352,7 +373,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
       const files = Array.isArray(data.project.files) ? data.project.files : [];
       const firstFile = findFirstFile(files);
-      setActiveFile(firstFile || null);
+      switchActiveFile(firstFile || null);
       if (firstFile) {
         setOpenTabs([{ file: firstFile, isDirty: false }]);
       }
@@ -385,6 +406,40 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     });
   }, [monacoRef.current]);
 
+  // Merge incoming chat messages into state, skipping duplicates (matched by
+  // author + text + near-identical timestamp) so optimistic copies, socket
+  // broadcasts and polled/backfilled messages don't render twice.
+  const mergeChatMessages = useCallback((incoming: ChatMessage[]) => {
+    if (!incoming.length) return;
+    setChatMessages((prev) => {
+      const next = [...prev];
+      for (const msg of incoming) {
+        const isDuplicate = next.some(
+          (m) =>
+            m.message === msg.message &&
+            m.user?._id === msg.user?._id &&
+            Math.abs(new Date(m.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 5000
+        );
+        if (!isDuplicate) next.push(msg);
+      }
+      return next.length === prev.length ? prev : next;
+    });
+  }, []);
+
+  // Fetch chat messages from the API. Used to backfill anything missed while
+  // the realtime socket was disconnected so a manual refresh is never needed.
+  const fetchLatestChatMessages = useCallback(async () => {
+    if (!project?._id) return;
+    try {
+      const res = await fetch(`/api/projects/${project._id}/messages`);
+      if (!res.ok) return;
+      const data = await res.json();
+      mergeChatMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      // Polling is best-effort; ignore transient failures.
+    }
+  }, [project?._id, mergeChatMessages]);
+
   // Setup socket connection
   useEffect(() => {
     if (!project || !isMember) return;
@@ -408,6 +463,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
+    setSocketInstance(socket);
 
     // Set up Yjs collaborative editing provider (connects to /collab endpoint)
     try {
@@ -450,18 +506,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     });
 
     socket.on('new-message', (msg: ChatMessage) => {
-      setChatMessages((prev) => {
-        // De-duplicate: ignore copies of messages already in the list (e.g. the
-        // optimistic copy added from the API response).
-        const isDuplicate = prev.some(
-          (m) =>
-            m.message === msg.message &&
-            m.user?._id === msg.user?._id &&
-            Math.abs(new Date(m.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 2000
-        );
-        if (isDuplicate) return prev;
-        return [...prev, msg];
-      });
+      mergeChatMessages([msg]);
     });
 
     // Chat typing indicators (a collaborator composing a chat message)
@@ -576,15 +621,20 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     // Socket connection state - re-join the project room on every (re)connect
     socket.on('connect', () => {
       setSyncStatus('synced');
+      setSocketConnected(true);
       socket.emit('join-project', joinPayload);
+      // Backfill chat messages missed while disconnected (no refresh needed).
+      fetchLatestChatMessages();
     });
 
     socket.on('disconnect', () => {
       setSyncStatus('offline');
+      setSocketConnected(false);
     });
 
     socket.on('connect_error', () => {
       setSyncStatus('offline');
+      setSocketConnected(false);
     });
 
     return () => {
@@ -605,10 +655,75 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     };
   }, [project?._id, isMember]);
 
+  // Fallback while realtime is unavailable: poll for new chat messages so they
+  // still appear without a manual refresh (e.g. socket server not started yet,
+  // network drop, or a deployment where the socket URL is unreachable).
+  useEffect(() => {
+    if (socketConnected || !isMember || !project?._id) return;
+    const interval = setInterval(fetchLatestChatMessages, 7000);
+    return () => clearInterval(interval);
+  }, [socketConnected, isMember, project?._id, fetchLatestChatMessages]);
+
   // Keep a ref of the active file path for socket handlers (avoids stale closures)
   useEffect(() => {
     activeFilePathRef.current = activeFile?.path ?? null;
   }, [activeFile?.path]);
+
+  // Bind the Monaco model to the Yjs document of the ACTIVE file. Re-created on
+  // every file switch / editor mount so each file syncs its own Y.Text - a
+  // stale binding would pipe edits into the previously open file's document.
+  useEffect(() => {
+    if (!editorMountId) return;
+    const editor = editorRef.current;
+    const ydoc = ydocRef.current;
+    const provider = yproviderRef.current;
+    if (!editor || !ydoc || !provider || !activeFile?.path) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Detach any previous binding before touching the model.
+    try {
+      ybindingRef.current?.destroy();
+    } catch (_) {
+      // ignore
+    }
+    ybindingRef.current = null;
+
+    const ytext = ydoc.getText(activeFile.path);
+    const localContent = activeFile.content ?? '';
+
+    // Seed the shared document from persisted content when still empty.
+    if (ytext.toString() === '' && localContent) {
+      ytext.insert(0, localContent);
+    }
+
+    // Prefer the live collaborative state over the DB snapshot.
+    const remoteContent = ytext.toString();
+    if (remoteContent !== model.getValue()) {
+      isRemoteUpdateRef.current = true;
+      model.setValue(remoteContent);
+      setTimeout(() => {
+        isRemoteUpdateRef.current = false;
+      }, 0);
+    }
+
+    ybindingRef.current = new MonacoBinding(
+      ytext,
+      model,
+      new Set([editor]),
+      provider.awareness
+    );
+
+    return () => {
+      try {
+        ybindingRef.current?.destroy();
+      } catch (_) {
+        // ignore
+      }
+      ybindingRef.current = null;
+    };
+  }, [editorMountId, activeFile?.path]);
 
   // Apply content received from a collaborator as a minimal edit so the local
   // user's caret position and selection are preserved while others type.
@@ -881,29 +996,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     // Set initial theme
     monaco.editor.setTheme(theme);
 
-    // Bind the Monaco model to the Yjs document for realtime collaboration
-    try {
-      const ydoc = ydocRef.current;
-      const provider = yproviderRef.current;
-      if (ydoc && provider) {
-        const model = editor.getModel();
-        if (model) {
-          // Get or create a Y.Text for this file path
-          const ytext = ydoc.getText(activeFile?.path || 'default');
-          if (ytext.toString() === '' && activeFile?.content) {
-            ytext.insert(0, activeFile.content);
-          }
-          ybindingRef.current = new MonacoBinding(
-            ytext,
-            model,
-            new Set([editor]),
-            provider.awareness
-          );
-        }
-      }
-    } catch (err) {
-      console.error('[CodeSync] Failed to bind Yjs to Monaco:', err);
-    }
+    // The Yjs <-> Monaco binding is created by the effect keyed on
+    // [editorMountId, activeFile?.path] so it is refreshed on every file
+    // switch and every editor (re)mount.
+    setEditorMountId((id) => id + 1);
 
     // Track cursor position for status bar
     editor.onDidChangeCursorPosition((e: any) => {
@@ -1129,7 +1225,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       if (existing) return prev;
       return [...prev, { file, isDirty: false }];
     });
-    setActiveFile(file);
+    switchActiveFile(file);
   }, []);
 
   const closeTab = useCallback((path: string) => {
@@ -1149,9 +1245,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     const isCurrentTabOpen = openTabs.some((tab) => tab.file.path === activeFile?.path);
     if (!isCurrentTabOpen && openTabs.length > 0) {
-      setActiveFile(openTabs[openTabs.length - 1].file);
+      switchActiveFile(openTabs[openTabs.length - 1].file);
     } else if (!isCurrentTabOpen && openTabs.length === 0) {
-      setActiveFile(null);
+      switchActiveFile(null);
     }
   }, [openTabs]);
 
@@ -1602,7 +1698,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             if (!confirm('Some files have unsaved changes. Close all anyway?')) return;
           }
           setOpenTabs([]);
-          setActiveFile(null);
+          switchActiveFile(null);
         },
       },
     ];
@@ -2080,7 +2176,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   return (
                     <div
                       key={tab.file.path}
-                      onClick={() => setActiveFile(tab.file)}
+                      onClick={() => switchActiveFile(tab.file)}
                       onMouseDown={(e) => {
                         if (e.button === 1) {
                           e.preventDefault();
@@ -2352,7 +2448,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   <ChatPanel
                     projectId={project._id}
                     messages={chatMessages}
-                    socket={socketRef.current}
+                    socket={socketInstance}
                     currentUser={session?.user ?? null}
                     onSendMessage={handleSendChatMessage}
                     typingUsers={chatTypingUsers}

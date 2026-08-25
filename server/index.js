@@ -19,6 +19,9 @@ const io = new Server(server, {
   },
   maxHttpBufferSize: 1e6, // 1MB limit
   transports: ['websocket', 'polling'],
+  // Don't let engine.io destroy non-Socket.IO WebSocket upgrades (the Yjs
+  // /collab connections share this HTTP server).
+  destroyUpgrade: false,
 });
 
 // MongoDB connection
@@ -471,11 +474,40 @@ io.on('connection', (socket) => {
   });
 });
 
-// Yjs WebSocket provider for collaborative editing
-const wss = new (require('ws').Server)({ server, path: '/collab' });
+// Yjs WebSocket provider for collaborative editing.
+// y-websocket v2 clients connect to `<serverUrl>/<roomname>`, i.e.
+// `/collab/<projectId>`. A plain `new ws.Server({ path: '/collab' })` would do
+// EXACT path matching and reject those requests, silently breaking realtime
+// editing. Instead we use a noServer ws instance plus a manual upgrade handler
+// that accepts any path under /collab and derives the doc name from it.
+const wss = new (require('ws').Server)({ noServer: true });
 
 wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req, { gc: true });
+  // req.url looks like "/collab/<projectId>?..." - extract the room/doc name.
+  let pathname = '';
+  try {
+    pathname = new URL(req.url, 'http://localhost').pathname;
+  } catch (_) {
+    pathname = req.url || '';
+  }
+  const docName = decodeURIComponent(pathname.replace(/^\/collab\//, '').replace(/^\/collab$/, '')).split('?')[0];
+  setupWSConnection(conn, req, { docName: docName || undefined, gc: true });
+});
+
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '';
+  try {
+    pathname = new URL(req.url, 'http://localhost').pathname;
+  } catch (_) {
+    return;
+  }
+  if (pathname === '/collab' || pathname.startsWith('/collab/')) {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  }
+  // Other upgrade paths (e.g. Socket.IO's /socket.io/) are handled by their
+  // own listeners attached to this server.
 });
 
 const PORT = process.env.PORT || 3001;

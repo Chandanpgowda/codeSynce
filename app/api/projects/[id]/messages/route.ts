@@ -5,6 +5,57 @@ import { authOptions } from '@/lib/auth';
 import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 
+// Get chat messages. Used by clients to backfill anything missed while the
+// realtime socket was disconnected (no manual refresh required).
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await dbConnect();
+
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(params.id)) {
+      return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 });
+    }
+
+    const project = await Project.findById(params.id)
+      .select('owner members chatMessages')
+      .populate('chatMessages.user', 'name email image');
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const isOwner = project.owner.toString() === session.user.id;
+    const isMember = project.members.some(
+      (member: mongoose.Types.ObjectId) => member.toString() === session.user.id
+    );
+    if (!isOwner && !isMember) {
+      return NextResponse.json({ error: 'You do not have access to this project' }, { status: 403 });
+    }
+
+    // Optional incremental fetch: ?after=<ISO timestamp> returns only newer
+    // messages, keeping poll responses small.
+    const afterParam = new URL(request.url).searchParams.get('after');
+    let messages = (project.chatMessages as any[]) || [];
+    if (afterParam) {
+      const after = new Date(afterParam);
+      if (!isNaN(after.getTime())) {
+        messages = messages.filter((m) => new Date(m.timestamp) > after);
+      }
+    }
+
+    return NextResponse.json({ messages });
+  } catch (error) {
+    console.error('Get chat messages error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
