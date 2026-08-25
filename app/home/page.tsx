@@ -10,6 +10,8 @@ import ProfileSettings from '@/components/ProfileSettings';
 import ShareProjectModal from '@/components/ShareProjectModal';
 import AntigravityEffect from '@/components/AntigravityEffect';
 import SpecularButton from '@/components/reactbits/SpecularButton';
+import MagicBento from '@/components/reactbits/MagicBento';
+import DarkVeil from '@/components/reactbits/DarkVeil';
 
 interface User {
   _id: string;
@@ -213,6 +215,10 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#0a0e17] isolate">
+      {/* DarkVeil shader background (deepest layer) */}
+      <div aria-hidden="true" className="fixed inset-0 -z-20 pointer-events-none overflow-hidden">
+        <DarkVeil hueShift={0} noiseIntensity={0.05} scanlineIntensity={0.1} scanlineFrequency={8} warpAmount={0.15} speed={0.35} />
+      </div>
       {/* Antigravity particle effect background */}
       <div
         aria-hidden="true"
@@ -742,6 +748,27 @@ export default function HomePage() {
             </div>
           </div>
         )}
+      {/* Magic Bento features showcase */}
+      <section className="py-16 flex flex-col items-center">
+        <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 text-center">
+          Why developers choose CodeSync
+        </h2>
+        <p className="text-gray-400 text-sm mb-8 text-center max-w-xl px-4">
+          Real-time collaboration, AI assistance and everything you need — beautifully orchestrated.
+        </p>
+        <MagicBento
+          textAutoHide
+          enableStars
+          enableSpotlight
+          enableBorderGlow
+          enableTilt
+          enableMagnetism
+          clickEffect
+          spotlightRadius={300}
+          particleCount={12}
+          glowColor="132, 0, 255"
+        />
+      </section>
       </main>
 
       {/* Modals */}
