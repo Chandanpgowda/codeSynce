@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -782,3 +784,42 @@ kbd {
 }
 
 .glass-input-wrap:focus-within .glass-input-text-area::after { background-position: 25% 50%; }
+
+/* ==== SaaS landing template (components/ui/saas-template.tsx) ====
+   Styles live here (not inline <style>) to avoid React hydration mismatches.
+   Keyframe names are prefixed "saas" so they don't clash with existing ones. */
+
+.saas-template,
+.saas-template * {
+  font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+}
+
+@keyframes saasFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes saasSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.saas-hero {
+  animation: saasFadeIn 0.6s ease-out;
+}
+
+.saas-mobile-menu {
+  animation: saasSlideDown 0.3s ease-out;
+}

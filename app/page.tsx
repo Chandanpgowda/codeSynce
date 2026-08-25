@@ -1,80 +1,19 @@
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import SaasTemplate from '@/components/ui/saas-template';
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
+  const isAuthenticated = !!session?.user;
 
   return (
-    <main className="min-h-screen">
-      {/* Navbar */}
-      <nav className="border-b border-dark-600 bg-dark-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-              </div>
-              <span className="text-xl font-bold text-white">Code<span className="text-primary-500">Sync</span></span>
-            </div>
-            <div className="flex items-center gap-4">
-              {session?.user ? (
-                <Link href="/home" className="btn-primary">
-                  Go to Dashboard
-                </Link>
-              ) : (
-                <>
-                  <Link href="/auth/signin" className="text-gray-300 hover:text-white transition-colors">
-                    Sign In
-                  </Link>
-                  <Link href="/auth/signup" className="btn-primary">
-                    Get Started
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </nav>
-
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        {/* Floating orbs */}
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-900/20 to-transparent pointer-events-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
-          <div className="text-center">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 animate-fade-in-up">
-              Code Together.
-              <br />
-              <span className="gradient-text">
-                Build Amazing Things.
-              </span>
-            </h1>
-            <p className="text-lg text-gray-400 max-w-2xl mx-auto mb-10 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-              CodeSync is a real-time collaborative coding platform. Create projects,
-              invite developers, code together with editor, chat in real-time,
-              and get AI-powered assistance.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-              <Link href="/auth/signup" className="btn-primary btn-glow text-lg px-8 py-3">
-                Start Coding Free
-              </Link>
-              <Link href="/home" className="btn-secondary text-lg px-8 py-3 hover:border-primary-500 hover:bg-dark-600 transition-all duration-300">
-                Explore Projects
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+    <main className="saas-template min-h-screen bg-black text-white">
+      {/* SaaS template: fixed navbar + hero */}
+      <SaasTemplate isAuthenticated={isAuthenticated} />
 
       {/* Features Section */}
-      <section className="py-20 bg-dark-800/50">
+      <section id="features" className="py-20 bg-dark-800/50 border-t border-gray-800/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-center text-white mb-12">
             Everything You Need to Code Together
@@ -165,9 +104,15 @@ export default async function Home() {
           <p className="text-gray-400 text-lg mb-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
             Join thousands of developers building amazing projects together.
           </p>
-          <Link href="/auth/signup" className="btn-primary btn-glow text-lg px-10 py-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-            Create Your Free Account
-          </Link>
+          {isAuthenticated ? (
+            <Link href="/home" className="btn-primary btn-glow text-lg px-10 py-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+              Go to Dashboard
+            </Link>
+          ) : (
+            <Link href="/auth/signup" className="btn-primary btn-glow text-lg px-10 py-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
+              Create Your Free Account
+            </Link>
+          )}
         </div>
       </section>
 
