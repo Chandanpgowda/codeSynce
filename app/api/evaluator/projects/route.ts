@@ -17,11 +17,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const q = (searchParams.get('search') || '').toLowerCase();
 
-    // Projects that are submitted and assigned to this evaluator, plus any under
-    // evaluation / evaluated by them.
+    // Projects this evaluator is assigned to, PLUS unclaimed submitted projects
+    // that are awaiting an evaluator (so they can be discovered and claimed).
     const projects = await Project.find({
       status: { $in: ['submitted', 'under_evaluation', 'evaluated'] },
-      assignedEvaluator: user.id,
+      $or: [
+        { assignedEvaluator: user.id },
+        { assignedEvaluator: null, status: 'submitted' },
+      ],
     })
       .populate('owner', 'name email image')
       .populate('members', 'name email image')
@@ -39,6 +42,12 @@ export async function GET(request: NextRequest) {
         language: p.language,
         tags: p.tags,
         status: p.status,
+        assignedToMe: (() => {
+          const ae = p.assignedEvaluator as unknown;
+          if (!ae) return false;
+          const id = typeof ae === 'object' ? (ae as { _id?: unknown; toString?: () => string })._id?.toString() ?? (ae as { toString: () => string }).toString() : String(ae);
+          return id === user.id.toString();
+        })(),
         submission: p.submission,
         teamSize: (p.members?.length || 0) + 1,
         owner: p.owner,

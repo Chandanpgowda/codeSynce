@@ -1906,6 +1906,25 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const panelBg = theme === 'vs-code-light' ? '#f3f3f3' : '#252526';
   const inputBg = theme === 'vs-code-light' ? '#ffffff' : '#3c3c3c';
 
+  // Submit the project for evaluation (DRAFT → SUBMITTED). Evidence is snapshotted server-side.
+  async function submitForEvaluation() {
+    if (!project) return;
+    if (project.status && project.status !== 'draft') return;
+    if (!window.confirm('Submit this project for evaluation? It will be locked (read-only) and your development evidence will be recorded for the evaluator.')) return;
+    try {
+      const res = await fetch(`/api/projects/${project._id}/submit`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert('Project submitted for evaluation. The workspace is now read-only while it is under review.');
+        await fetchProject();
+      } else {
+        alert(json.error || 'Failed to submit project for evaluation.');
+      }
+    } catch {
+      alert('Failed to submit project for evaluation.');
+    }
+  }
+
   return (
     <div className="h-screen flex flex-col" style={{ background: bgColor, color: textColor }}>
       {/* Top Bar */}
@@ -1950,6 +1969,30 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Submit for evaluation — owners only, while project is still a draft */}
+          {isOwner && (!project.status || project.status === 'draft') && (
+            <button
+              onClick={submitForEvaluation}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+              title="Submit project for evaluation"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              <span className="hidden md:inline">Submit</span>
+            </button>
+          )}
+          {project.status && project.status !== 'draft' && (
+            <span
+              className="px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wide"
+              style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+              title="Project is locked for evaluation"
+            >
+              {project.status.replace('_', ' ')}
+            </span>
+          )}
+
           {/* Command Palette button */}
           <button
             onClick={() => setCommandPaletteOpen(true)}
