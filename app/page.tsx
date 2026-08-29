@@ -12,7 +12,7 @@ export default async function Home() {
   return (
     <main className="min-h-screen bg-[#060a13] text-white overflow-hidden">
       {/* Subtle grid background */}
-      <div aria-hidden="true" className="fixed inset-0 -z-10 pointer-events-none">
+      <div aria-hidden="true" className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-900/20 via-transparent to-transparent" />
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
       </div>
@@ -41,20 +41,23 @@ export default async function Home() {
 
       <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-28 text-center">
         {/* GhostFibers animated background */}
-        <div className="absolute inset-0 -z-10 rounded-3xl overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 z-0 rounded-3xl overflow-hidden pointer-events-none">
           <GhostFibers
-            lineColor="#140E35"
-            glowColor="#3437A0"
+            lineColor="#1E1B6E"
+            glowColor="#4338CA"
             speed={0.2}
             scale={2}
             rotation={0}
             rotationSpeed={0.25}
             layers={4}
+            glowIntensity={1.9}
+            brightness={2.4}
             dpr={1}
           />
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#060a13]/40 to-[#060a13]" />
         </div>
 
+        <div className="relative z-10">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs font-medium mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
           Evidence-Based Project Evaluation
@@ -67,6 +70,7 @@ export default async function Home() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link href="/auth/signup" className="inline-flex items-center gap-2 px-8 py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/25 transition-all hover:-translate-y-0.5">Start Building <ArrowRight className="w-5 h-5" /></Link>
           <Link href="/auth/signin?role=evaluator" className="inline-flex items-center gap-2 px-8 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold rounded-xl transition-all">Evaluator Login</Link>
+        </div>
         </div>
       </section>
 
