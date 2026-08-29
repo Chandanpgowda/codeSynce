@@ -56,7 +56,7 @@ export default function EvaluatorProjectPage({ params }: { params: { id: string 
     setLoading(true); setLoadError('');
     try {
       const res = await fetch(`/api/evaluator/projects/${params.id}`);
-      if (res.status === 401 || res.status === 403) { router.push('/evaluator'); return; }
+      if (res.status === 401) { router.push('/auth/signin'); return; }
       const json = await res.json();
       if (res.ok) setData(json); else setLoadError(json.error || 'Failed to load');
     } catch { setLoadError('Failed to load project'); }
@@ -143,6 +143,22 @@ export default function EvaluatorProjectPage({ params }: { params: { id: string 
         <Lock className="w-8 h-8 text-red-400" />
         <p>{loadError}</p>
         <Link href="/evaluator" className="text-sky-400 text-sm">← Back to Evaluator Dashboard</Link>
+      </div>
+    );
+  }
+
+  // Unclaimed submitted project: offer to claim before opening the workspace.
+  if (data?.claimable) {
+    return (
+      <div className="min-h-screen bg-[#0a0e17] text-white flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">READY FOR EVALUATION</span>
+        <h1 className="text-2xl font-bold">{data.project?.name || 'Project'}</h1>
+        <p className="text-gray-400 text-sm max-w-md">This project has been submitted by the team but is not yet assigned to an evaluator. Claim it to start your evaluation.</p>
+        {notice && <p className="text-sky-400 text-sm">{notice}</p>}
+        <div className="flex items-center gap-3 mt-2">
+          <button onClick={claimProject} disabled={busy} className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-sm font-medium transition-colors">Claim &amp; Start Evaluation</button>
+          <Link href="/evaluator" className="text-sky-400 text-sm">← Back to Dashboard</Link>
+        </div>
       </div>
     );
   }

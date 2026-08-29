@@ -33,9 +33,13 @@ export async function GET(
 
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    // Only the assigned evaluator (or an admin) may open the evaluation workspace.
+    // Assigned evaluators get the full workspace. Unclaimed submitted projects
+    // are visible to any evaluator (they appear on the dashboard) — load them
+    // read-only with claimable=true so the UI can offer the Claim button.
+    // Mutating evaluation endpoints still require explicit assignment.
     const isAssigned = project.assignedEvaluator?.toString() === user.id;
-    if (!isAssigned) {
+    const isClaimable = !project.assignedEvaluator && project.status === 'submitted';
+    if (!isAssigned && !isClaimable) {
       return NextResponse.json({ error: 'This project is not assigned to you' }, { status: 403 });
     }
 
@@ -89,6 +93,7 @@ export async function GET(
         criteria: rubric.criteria,
       },
       readOnly: true,
+      claimable: isClaimable,
       evaluationMode: project.status !== 'draft',
     });
   } catch (error) {
