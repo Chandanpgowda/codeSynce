@@ -16,7 +16,7 @@ export async function GET() {
     }
 
     const user = await User.findById(session.user.id).select(
-      'name email image phone skills bio provider projectsOwned projectsJoined createdAt'
+      'name email image phone skills bio provider role projectsOwned projectsJoined createdAt'
     );
 
     if (!user) {

@@ -41,11 +41,25 @@ export interface IProject {
     fileReferenceLine: number;
   }[];
   creatorName?: string;
+  /** Project lifecycle: DRAFT → SUBMITTED → UNDER_EVALUATION → EVALUATED */
+  status: ProjectStatus;
+  /** Evaluator to whom this project is assigned (optional until claimed). */
+  assignedEvaluator?: mongoose.Types.ObjectId;
+  /** Snapshot captured when the team submits the project for evaluation. */
+  submission?: {
+    submittedAt: Date;
+    submittedBy: mongoose.Types.ObjectId;
+    teamSnapshot: { userId: mongoose.Types.ObjectId; name: string }[];
+    fileCount: number;
+    activitySummary: Record<string, number>;
+  };
   lastEditedAt: Date;
   lastEditedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type ProjectStatus = 'draft' | 'submitted' | 'under_evaluation' | 'evaluated';
 
 const ProjectSchema = new Schema<IProject>(
   {
@@ -61,6 +75,25 @@ const ProjectSchema = new Schema<IProject>(
     inviteToken: { type: String, select: false },
     inviteExpiresAt: { type: Date, select: false },
     files: { type: Schema.Types.Mixed, default: [] },
+    status: {
+      type: String,
+      enum: ['draft', 'submitted', 'under_evaluation', 'evaluated'],
+      default: 'draft',
+      required: true,
+    },
+    assignedEvaluator: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    submission: {
+      submittedAt: { type: Date },
+      submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      teamSnapshot: [
+        {
+          userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+          name: { type: String },
+        },
+      ],
+      fileCount: { type: Number, default: 0 },
+      activitySummary: { type: Map, of: Number, default: {} },
+    },
     lastEditedAt: { type: Date, default: Date.now },
     lastEditedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     chatMessages: [

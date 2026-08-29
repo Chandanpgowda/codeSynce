@@ -29,6 +29,14 @@ interface Project {
   language: string;
   tags: string[];
   isPublic: boolean;
+  status: 'draft' | 'submitted' | 'under_evaluation' | 'evaluated';
+  assignedEvaluator?: User;
+  submission?: {
+    submittedAt: string;
+    submittedBy: User;
+    teamSnapshot: { userId: string; name: string }[];
+    fileCount: number;
+  };
   lastEditedAt: string;
   lastEditedBy?: User;
   createdAt: string;
@@ -81,8 +89,11 @@ export default function HomePage() {
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
+    } else if (status === 'authenticated' && session?.user?.role === 'evaluator') {
+      // Evaluators use the separate evaluator dashboard, never the builder home.
+      router.push('/evaluator');
     }
-  }, [status, router]);
+  }, [status, router, session?.user?.role]);
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -194,6 +205,21 @@ export default function HomePage() {
   };
 
   const getInitial = (name: string) => (name || 'U').charAt(0).toUpperCase();
+
+  const handleSubmitProject = async (projectId: string) => {
+    if (!window.confirm('Submit this project for evaluation? The project will be locked for submission and evidence recorded.')) return;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/submit`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        fetchProjects();
+      } else {
+        window.alert(data.error || 'Failed to submit project');
+      }
+    } catch (error) {
+      console.error('Failed to submit project:', error);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -477,6 +503,15 @@ export default function HomePage() {
                       <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium shrink-0 ${LANG_COLORS[project.language] || 'bg-gray-500/20 text-gray-400'}`}>
                         {project.language}
                       </span>
+                      {project.status && project.status !== 'draft' && (
+                        <span className={`text-[11px] px-2.5 py-1 rounded-full font-medium shrink-0 capitalize
+                          ${project.status === 'submitted' ? 'bg-amber-500/15 text-amber-300'
+                          : project.status === 'under_evaluation' ? 'bg-sky-500/15 text-sky-300'
+                          : project.status === 'evaluated' ? 'bg-emerald-500/15 text-emerald-300'
+                          : 'bg-gray-500/20 text-gray-400'}`}>
+                          {project.status.replace(/_/g, ' ')}
+                        </span>
+                      )}
                     </div>
 
                     <p className="text-sm text-gray-400 line-clamp-2 mb-4 min-h-[40px]">
@@ -638,7 +673,19 @@ export default function HomePage() {
                            </svg>
                            Share
                          </SpecularButton>
-                       </>
+                       
+                        {isOwner && (!project.status || project.status === 'draft') && (
+                          <SpecularButton size="sm" radius={10}
+                            onClick={() => handleSubmitProject(project._id)}
+                            className="flex items-center justify-center gap-2 !bg-amber-500/15 hover:!bg-amber-500/25 !text-amber-300 !text-sm font-medium !py-2 !px-3 !rounded-[10px] transition-colors border border-amber-500/30"
+                            title="Submit for evaluation"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Submit
+                          </SpecularButton>
+                        )}</>
                      ) : isPending ? (
                        <SpecularButton size="sm" radius={10}
                          onClick={() => handleCancelJoinRequest(project._id)}

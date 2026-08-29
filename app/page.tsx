@@ -1,125 +1,132 @@
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import SaasTemplate from '@/components/ui/saas-template';
+import { Activity, BarChart3, Users, Code2, ShieldCheck, ArrowRight } from 'lucide-react';
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
   const isAuthenticated = !!session?.user;
 
   return (
-    <main className="saas-template min-h-screen bg-black text-white">
-      {/* SaaS template: fixed navbar + hero */}
-      <SaasTemplate isAuthenticated={isAuthenticated} />
+    <main className="min-h-screen bg-[#060a13] text-white overflow-hidden">
+      {/* Subtle grid background */}
+      <div aria-hidden="true" className="fixed inset-0 -z-10 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary-900/20 via-transparent to-transparent" />
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.1) 1px,transparent 1px)', backgroundSize: '60px 60px' }} />
+      </div>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 bg-dark-800/50 border-t border-gray-800/50">
+      {/* Navbar */}
+      <nav className="relative z-20 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-center text-white mb-12">
-            Everything You Need to Code Together
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Real-time Collaboration</h3>
-              <p className="text-gray-400">
-                Multiple developers can code in the same file simultaneously with live cursors and instant sync.
-              </p>
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><Code2 className="w-4.5 h-4.5 text-white" /></div>
+              <span className="text-lg font-bold">Code<span className="text-primary-400">Synce</span></span>
             </div>
-
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">VS Code-like Editor</h3>
-              <p className="text-gray-400">
-                Full-featured code editor with syntax highlighting, IntelliSense, multi-file support, and more.
-              </p>
+            <div className="flex items-center gap-3">
+              {isAuthenticated ? (
+                <Link href={session?.user?.role === 'evaluator' ? '/evaluator' : '/home'} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors">Go to Dashboard <ArrowRight className="w-4 h-4" /></Link>
+              ) : (
+                <>
+                  <Link href="/auth/signin" className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-2">Sign In</Link>
+                  <Link href="/auth/signup" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors">Start Building <ArrowRight className="w-4 h-4" /></Link>
+                </>
+              )}
             </div>
+          </div>
+        </div>
+      </nav>
 
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Team Chat</h3>
-              <p className="text-gray-400">
-                Built-in real-time chat so your team can discuss code, share ideas, and stay in sync.
-              </p>
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-28 text-center">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs font-medium mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
+          Evidence-Based Project Evaluation
+        </div>
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight leading-tight mb-6">
+          Build Together. <span className="bg-gradient-to-r from-primary-400 to-cyan-400 bg-clip-text text-transparent">Track Everything.</span> Evaluate Fairly.
+        </h1>
+        <p className="text-gray-400 text-lg md:text-xl max-w-3xl mx-auto mb-10 leading-relaxed">A collaborative project development and evaluation platform that captures meaningful development activity, provides contribution evidence, and helps evaluators assess projects using structured, AI-assisted evaluation.</p>
+        <p className="text-primary-300/80 text-sm max-w-2xl mx-auto mb-10 italic">&ldquo;Don&apos;t evaluate only what students built. Evaluate how they built it.&rdquo;</p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Link href="/auth/signup" className="inline-flex items-center gap-2 px-8 py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/25 transition-all hover:-translate-y-0.5">Start Building <ArrowRight className="w-5 h-5" /></Link>
+          <Link href="/auth/signin?role=evaluator" className="inline-flex items-center gap-2 px-8 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold rounded-xl transition-all">Evaluator Login</Link>
+        </div>
+      </section>
+
+      <section className="border-y border-white/5 bg-white/[0.02]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-primary-500/10 flex items-center justify-center"><Activity className="w-5 h-5 text-primary-400" /></div>
+              <h3 className="font-semibold text-white">Collaborative Development</h3>
+              <p className="text-sm text-gray-500 max-w-xs">Real-time code editor, team chat, AI assistant, and terminal — everything your team needs to build together.</p>
             </div>
-
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">AI Assistant</h3>
-              <p className="text-gray-400">
-                Get instant help with code, debugging, and best practices from our built-in AI assistant.
-              </p>
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-cyan-500/10 flex items-center justify-center"><BarChart3 className="w-5 h-5 text-cyan-400" /></div>
+              <h3 className="font-semibold text-white">Activity Evidence</h3>
+              <p className="text-sm text-gray-500 max-w-xs">Meaningful development events are captured automatically — not keystrokes, but real progress signals.</p>
             </div>
-
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Secure Access</h3>
-              <p className="text-gray-400">
-                Project owners approve join requests, ensuring only trusted developers can access your code.
-              </p>
-            </div>
-
-            <div className="card card-hover">
-              <div className="w-12 h-12 bg-primary-600/20 rounded-lg flex items-center justify-center mb-4 animate-pulse-glow">
-                <svg className="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Cloud Deployed</h3>
-              <p className="text-gray-400">
-                Deployed on Vercel with MongoDB Atlas for reliable, scalable, and fast performance.
-              </p>
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center"><ShieldCheck className="w-5 h-5 text-emerald-400" /></div>
+              <h3 className="font-semibold text-white">Fair Evaluation</h3>
+              <p className="text-sm text-gray-500 max-w-xs">Structured rubrics, contribution analytics, and AI-assisted analysis — the evaluator always makes the final decision.</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="relative overflow-hidden py-20">
-        <div className="orb orb-1" style={{ opacity: 0.2 }} />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
-          <h2 className="text-3xl font-bold text-white mb-6 animate-fade-in-up">
-            Ready to Start Collaborating?
-          </h2>
-          <p className="text-gray-400 text-lg mb-8 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
-            Join thousands of developers building amazing projects together.
-          </p>
-          {isAuthenticated ? (
-            <Link href="/home" className="btn-primary btn-glow text-lg px-10 py-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-              Go to Dashboard
-            </Link>
-          ) : (
-            <Link href="/auth/signup" className="btn-primary btn-glow text-lg px-10 py-3 animate-fade-in-up" style={{ animationDelay: '0.4s' }}>
-              Create Your Free Account
-            </Link>
-          )}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
+        <h2 className="text-2xl md:text-3xl font-bold text-center mb-12">How CodeSynce Works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { step: '01', title: 'Build Together', desc: 'Create a project, invite your team, and collaborate in real-time with the editor, chat, and AI assistant.', icon: <Users className="w-5 h-5 text-primary-400" /> },
+            { step: '02', title: 'Track Progress', desc: 'Every meaningful action — features, bug fixes, tasks, milestones — is recorded as development evidence.', icon: <Activity className="w-5 h-5 text-cyan-400" /> },
+            { step: '03', title: 'Evaluate Fairly', desc: 'Submit for evaluation. Evaluators review evidence, analytics, and use AI assistance to assign structured marks.', icon: <ShieldCheck className="w-5 h-5 text-emerald-400" /> },
+          ].map((item) => (
+            <div key={item.step} className="relative bg-[#0d1117] border border-white/5 rounded-2xl p-6 hover:border-primary-500/20 transition-colors">
+              <span className="text-xs font-mono text-primary-500/60 mb-3 block">{item.step}</span>
+              <div className="w-9 h-9 rounded-lg bg-white/5 flex items-center justify-center mb-4">{item.icon}</div>
+              <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-dark-600 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500">
-          <p>© {new Date().getFullYear()} CodeSync. Built for developers, by developers.</p>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gradient-to-br from-primary-500/10 to-transparent border border-primary-500/20 rounded-2xl p-8">
+            <h3 className="text-xl font-bold text-white mb-2">Project Builder</h3>
+            <p className="text-sm text-gray-400 mb-5">For students and developers. Create projects, collaborate with your team, manage tasks, and submit for evaluation.</p>
+            <ul className="space-y-2 mb-6">
+              {['Real-time collaborative editor', 'Team chat & AI assistant', 'Task & milestone management', 'Submit for evaluation'].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm text-gray-300"><span className="w-1.5 h-1.5 rounded-full bg-primary-400" />{f}</li>
+              ))}
+            </ul>
+            <Link href="/auth/signup" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors">Start Building <ArrowRight className="w-4 h-4" /></Link>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-500/10 to-transparent border border-emerald-500/20 rounded-2xl p-8">
+            <h3 className="text-xl font-bold text-white mb-2">Evaluator</h3>
+            <p className="text-sm text-gray-400 mb-5">For teachers and reviewers. Inspect development evidence, analyze contributions, and assign structured marks.</p>
+            <ul className="space-y-2 mb-6">
+              {['Read-only project inspection', 'Contribution analytics', 'AI evaluation assistant', 'Structured rubric & reports'].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm text-gray-300"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />{f}</li>
+              ))}
+            </ul>
+            <Link href="/auth/signin?role=evaluator" className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors">Evaluator Login <ArrowRight className="w-4 h-4" /></Link>
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-white/5 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Code2 className="w-4 h-4" />
+            &copy; {new Date().getFullYear()} CodeSynce. Build Together. Track Everything. Evaluate Fairly.
+          </div>
+          <div className="flex items-center gap-6 text-xs text-gray-600">
+            <span>Evidence-Based Evaluation</span><span>&bull;</span><span>AI-Assisted, Human-Decided</span>
+          </div>
         </div>
       </footer>
     </main>

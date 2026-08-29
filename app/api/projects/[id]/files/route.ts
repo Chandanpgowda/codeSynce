@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 // Helper functions for file tree manipulation
 function getLanguageFromName(name: string): string {
@@ -95,6 +96,10 @@ export async function POST(
     if (!isMember || !canEdit) {
       return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
+    }
 
     const body = await request.json();
     const { type, name, parentPath, content } = body;
@@ -139,6 +144,14 @@ export async function POST(
     project.lastEditedBy = session.user.id as any;
     await project.save();
 
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: type === 'file' ? 'file_created' : 'other',
+      message: `${type === 'file' ? 'Created file' : 'Created folder'} "${fullPath}"`,
+      file: fullPath,
+    });
+
     return NextResponse.json({ item: newItem }, { status: 201 });
   } catch (error) {
     console.error('Create file/folder error:', error);
@@ -170,6 +183,10 @@ export async function PUT(
     if (!isMember || !canEdit) {
       return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
+    }
 
     const body = await request.json();
     const { path, content } = body;
@@ -191,6 +208,14 @@ export async function PUT(
     project.lastEditedAt = new Date();
     project.lastEditedBy = session.user.id as any;
     await project.save();
+
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'file_modified',
+      message: `Modified file "${path}"`,
+      file: path,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -223,6 +248,10 @@ export async function DELETE(
     if (!isMember || !canEdit) {
       return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
     }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const path = searchParams.get('path');
@@ -243,6 +272,14 @@ export async function DELETE(
     project.lastEditedAt = new Date();
     project.lastEditedBy = session.user.id as any;
     await project.save();
+
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'file_deleted',
+      message: `Deleted "${path}"`,
+      file: path,
+    });
 
     return NextResponse.json({ success: true, message: 'Deleted' });
   } catch (error) {

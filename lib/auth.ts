@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import User from '@/models/User';
+import type { UserRole } from '@/models/User';
 import OTP from '@/models/OTP';
 
 export const authOptions: NextAuthOptions = {
@@ -96,8 +97,18 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user, account }) {
+      // When a user signs in, load the authoritative role from the database.
+      // Never take a role from the client.
       if (user) {
         token.id = user.id;
+        try {
+          await dbConnect();
+          const dbUser = (await User.findById(user.id).select('role').lean()) as any;
+          token.role = (dbUser?.role as UserRole) || 'builder';
+        } catch (err) {
+          console.error('Failed to load role during JWT callback', err);
+          token.role = 'builder';
+        }
       }
       if (account?.provider === 'google') {
         token.provider = 'google';
@@ -107,6 +118,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
       }
       return session;
     },

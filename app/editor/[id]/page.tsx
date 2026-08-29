@@ -53,6 +53,24 @@ interface Project {
   language: string;
   tags: string[];
   isPublic: boolean;
+  status: 'draft' | 'submitted' | 'under_evaluation' | 'evaluated';
+  assignedEvaluator?: {
+    _id: string;
+    name: string;
+    email: string;
+    image?: string;
+  };
+  submission?: {
+    submittedAt: string;
+    submittedBy: {
+      _id: string;
+      name: string;
+      email: string;
+      image?: string;
+    };
+    teamSnapshot: { userId: string; name: string }[];
+    fileCount: number;
+  };
   memberPermissions?: Record<string, 'editor' | 'viewer'>;
 }
 
@@ -1787,7 +1805,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   }, [project, openFileInTab]);
 
-  const canEdit = isOwner || project?.memberPermissions?.[session?.user?.id || ''] !== 'viewer';
+  const canEdit = (isOwner || project?.memberPermissions?.[session?.user?.id || ''] !== 'viewer')
+    // Evidence preservation: once submitted for evaluation, code is read-only
+    // to prevent manipulation of the evidence under review.
+    && project?.status === 'draft';
 
   // Editor options
   const editorOptions = {
@@ -2459,6 +2480,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     code={activeFile?.content || ''}
                     language={activeFile?.language || 'javascript'}
                     projectName={project.name}
+                    projectId={project._id}
                     selectedCode={statistics.selectedText || ''}
                     selectedAction={selectedAIAction}
                     onActionExecuted={() => setSelectedAIAction(null)}

@@ -4,6 +4,7 @@ import Project from '@/models/Project';
 import User from '@/models/User';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 // List all projects
 export async function GET(request: NextRequest) {
@@ -116,6 +117,14 @@ export async function POST(request: NextRequest) {
     // Add project to user's owned projects
     await User.findByIdAndUpdate(session.user.id, {
       $push: { projectsOwned: project._id },
+    });
+
+    // Record the project creation activity (evidence timeline entry).
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'project_created',
+      message: `Project "${name}" created`,
     });
 
     return NextResponse.json({ project }, { status: 201 });

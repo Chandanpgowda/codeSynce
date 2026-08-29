@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 function getLanguageFromName(name: string): string {
   const ext = name.split('.').pop()?.toLowerCase() || '';
@@ -108,6 +109,9 @@ export async function POST(
     if (!isMember || !canEdit) {
       return NextResponse.json({ error: 'Editor permission is required to rename files' }, { status: 403 });
     }
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
+    }
 
     const body = await request.json();
     const { path, oldName, newName } = body;
@@ -155,6 +159,14 @@ export async function POST(
     project.lastEditedAt = new Date();
     project.lastEditedBy = session.user.id as any;
     await project.save();
+
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'file_renamed',
+      message: `Renamed "${path}" to "${newFullPath}"`,
+      file: newFullPath,
+    });
 
     return NextResponse.json({ success: true, message: 'Renamed successfully' });
   } catch (error) {

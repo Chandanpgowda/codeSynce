@@ -5,6 +5,7 @@ import User from '@/models/User';
 import Notification from '@/models/Notification';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 // Accept or reject a join request
 export async function POST(
@@ -75,6 +76,15 @@ export async function POST(
           message: `You were accepted into "${project.name}"`,
           projectId: project._id,
           fromUser: session.user.id,
+        });
+
+        // Record team membership in the evidence timeline
+        const joinedUser = await User.findById(userIdStr).select('name');
+        await recordActivity({
+          project: project._id.toString(),
+          user: userIdStr,
+          activityType: 'member_joined',
+          message: `${joinedUser?.name || 'A developer'} joined the project`,
         });
 
         return NextResponse.json({ success: true, message: 'User added to project' });

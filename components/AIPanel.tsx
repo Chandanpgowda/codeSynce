@@ -6,6 +6,7 @@ interface AIPanelProps {
   code: string;
   language: string;
   projectName: string;
+  projectId?: string;
   selectedCode?: string;
   onAction?: (action: string, result: string) => void;
   selectedAction?: string | null;
@@ -38,7 +39,7 @@ const ACTIONS: { id: AIAction; label: string; icon: string }[] = [
   { id: 'find_bug', label: 'Find Bug', icon: '🐛' },
 ];
 
-export default function AIPanel({ code, language, projectName, selectedCode = '', onAction, selectedAction, onActionExecuted }: AIPanelProps) {
+export default function AIPanel({ code, language, projectName, projectId, selectedCode = '', onAction, selectedAction, onActionExecuted }: AIPanelProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -75,6 +76,7 @@ export default function AIPanel({ code, language, projectName, selectedCode = ''
           code,
           language,
           context: projectName,
+          projectId,
           selectedCode: selectedCode || undefined,
           action: action || undefined,
         }),

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { message, code, language, context, action } = body;
+    const { message, code, language, context, action, projectId } = body;
 
     if (!message && !action) {
       return NextResponse.json(
@@ -115,6 +116,19 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
     const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+
+    // Track AI usage as transparent, contextual evidence — never a negative score.
+    if (projectId && session?.user?.id) {
+      await recordActivity({
+        project: projectId,
+        user: session.user.id,
+        activityType: 'ai_used',
+        message: validAction
+          ? `Used AI assistant (${validAction})`
+          : 'Used AI assistant',
+        metadata: { action: validAction || (message ? 'chat' : undefined) },
+      });
+    }
 
     return NextResponse.json({ response: aiResponse, provider: 'gemini', action: validAction });
   } catch (error: any) {

@@ -5,6 +5,17 @@ import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import SignInCard2 from '@/components/ui/sign-in-card-2';
 
+async function getRole(): Promise<'builder' | 'evaluator' | 'guest'> {
+  try {
+    const res = await fetch('/api/auth/session');
+    const session = await res.json();
+    if (session?.user?.role) return session.user.role;
+    return 'guest';
+  } catch {
+    return 'guest';
+  }
+}
+
 export default function SignInPage() {
   const router = useRouter();
   const [error, setError] = useState('');
@@ -25,7 +36,13 @@ export default function SignInPage() {
         return 'Invalid email or password';
       }
 
-      router.push('/home');
+      // Route by the SERVER-ASSIGNED role (never by client state).
+      const role = await getRole();
+      if (role === 'evaluator') {
+        router.push('/evaluator');
+      } else {
+        router.push('/home');
+      }
       return null;
     } catch (err) {
       console.error('Sign in error:', err);
