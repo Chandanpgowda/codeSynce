@@ -33,15 +33,22 @@ export async function GET(
 
     if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 });
 
-    // Assigned evaluators get the full workspace. Unclaimed submitted projects
-    // are visible to any evaluator (they appear on the dashboard) — load them
-    // read-only with claimable=true so the UI can offer the Claim button.
+    // Any evaluator can open any submitted/under-evaluation/evaluated project.
+    // - Assigned evaluator  -> full workspace
+    // - Unclaimed submitted -> read-only with claimable=true (Claim button)
+    // - Claimed by another  -> read-only view, no claim
     // Mutating evaluation endpoints still require explicit assignment.
-    const isAssigned = project.assignedEvaluator?.toString() === user.id;
-    const isClaimable = !project.assignedEvaluator && project.status === 'submitted';
-    if (!isAssigned && !isClaimable) {
-      return NextResponse.json({ error: 'This project is not assigned to you' }, { status: 403 });
+    const assignedId = project.assignedEvaluator
+      ? (typeof project.assignedEvaluator === 'object' && '_id' in project.assignedEvaluator
+          ? (project.assignedEvaluator as any)._id.toString()
+          : project.assignedEvaluator.toString())
+      : null;
+    const isAssigned = assignedId === user.id;
+    const reviewable = ['submitted', 'under_evaluation', 'evaluated'].includes(project.status);
+    if (!reviewable) {
+      return NextResponse.json({ error: 'This project is not available for evaluation' }, { status: 403 });
     }
+    const isClaimable = !assignedId && project.status === 'submitted';
 
     const [activities, tasks, milestones, existingEvaluation] = await Promise.all([
       Activity.find({ project: params.id }).populate('user', 'name email image').sort({ createdAt: 1 }),

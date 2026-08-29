@@ -17,14 +17,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const q = (searchParams.get('search') || '').toLowerCase();
 
-    // Projects this evaluator is assigned to, PLUS unclaimed submitted projects
-    // that are awaiting an evaluator (so they can be discovered and claimed).
+    // Every evaluator can see ALL submitted/under-evaluation/evaluated projects.
+    // Any evaluator may claim an unclaimed submitted project; projects already
+    // claimed by another evaluator are visible read-only (assignedToMe=false).
     const projects = await Project.find({
       status: { $in: ['submitted', 'under_evaluation', 'evaluated'] },
-      $or: [
-        { assignedEvaluator: user.id },
-        { assignedEvaluator: null, status: 'submitted' },
-      ],
     })
       .populate('owner', 'name email image')
       .populate('members', 'name email image')
