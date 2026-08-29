@@ -1,4 +1,5 @@
 'use client';
+import { LogoMark } from '@/components/Logo';
 
 import { useEffect, useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
@@ -104,7 +105,7 @@ export default function EvaluatorDashboard() {
       <header className="border-b border-white/5 bg-[#0d1117]/80 backdrop-blur-lg sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2 font-semibold">
-            <ShieldCheck className="w-5 h-5 text-sky-400" />
+            <LogoMark className="w-7 h-7" />
             <span>CodeSynce · Evaluator</span>
           </div>
           <div className="flex items-center gap-4 text-sm">

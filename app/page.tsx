@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { LogoMark } from '@/components/Logo';
+import GhostFibers from '@/components/GhostFibers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { Activity, BarChart3, Users, Code2, ShieldCheck, ArrowRight } from 'lucide-react';
@@ -20,7 +22,7 @@ export default async function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"><Code2 className="w-4.5 h-4.5 text-white" /></div>
+              <LogoMark className="w-8 h-8" />
               <span className="text-lg font-bold">Code<span className="text-primary-400">Synce</span></span>
             </div>
             <div className="flex items-center gap-3">
@@ -38,6 +40,21 @@ export default async function Home() {
       </nav>
 
       <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-28 text-center">
+        {/* GhostFibers animated background */}
+        <div className="absolute inset-0 -z-10 rounded-3xl overflow-hidden pointer-events-none">
+          <GhostFibers
+            lineColor="#140E35"
+            glowColor="#3437A0"
+            speed={0.2}
+            scale={2}
+            rotation={0}
+            rotationSpeed={0.25}
+            layers={4}
+            dpr={1}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#060a13]/40 to-[#060a13]" />
+        </div>
+
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-500/10 border border-primary-500/20 text-primary-300 text-xs font-medium mb-6">
           <span className="w-1.5 h-1.5 rounded-full bg-primary-400 animate-pulse" />
           Evidence-Based Project Evaluation
