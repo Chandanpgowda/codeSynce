@@ -85,6 +85,22 @@ export default function HomePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [activeView, setActiveView] = useState<'all' | 'mine' | 'collaborating'>('all');
+  const [resultData, setResultData] = useState<any>(null);
+  const [resultLoading, setResultLoading] = useState(false);
+  const [resultError, setResultError] = useState('');
+
+  async function openResults(projectId: string) {
+    setResultLoading(true); setResultError(''); setResultData(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/results`);
+      const json = await res.json();
+      if (res.ok) {
+        if (json.evaluated) setResultData(json.result);
+        else setResultError('The evaluation has not been finalized yet.');
+      } else setResultError(json.error || 'Failed to load results');
+    } catch { setResultError('Failed to load results'); }
+    finally { setResultLoading(false); }
+  }
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -685,6 +701,18 @@ export default function HomePage() {
                             </svg>
                             Submit
                           </SpecularButton>
+                        )}
+                        {project.status === 'evaluated' && (
+                          <SpecularButton size="sm" radius={10}
+                            onClick={() => openResults(project._id)}
+                            className="flex items-center justify-center gap-2 !bg-emerald-500/15 hover:!bg-emerald-500/25 !text-emerald-300 !text-sm font-medium !py-2 !px-3 !rounded-[10px] transition-colors border border-emerald-500/30"
+                            title="View evaluation result"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            Result
+                          </SpecularButton>
                         )}</>
                      ) : isPending ? (
                        <SpecularButton size="sm" radius={10}
@@ -823,6 +851,78 @@ export default function HomePage() {
 
       {showProfileSettings && (
         <ProfileSettings onClose={() => setShowProfileSettings(false)} />
+      )}
+
+      {(resultLoading || resultData || resultError) && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => { setResultData(null); setResultError(''); }}>
+          <div className="bg-[#161b22] border border-white/10 rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="text-emerald-400">✓</span> Evaluation Result
+              </h2>
+              <button onClick={() => { setResultData(null); setResultError(''); }} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="p-6">
+              {resultLoading && <p className="text-gray-400 text-sm">Loading results…</p>}
+              {resultError && <p className="text-amber-300 text-sm">{resultError}</p>}
+              {resultData && (
+                <div className="space-y-5">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-400">
+                    <span>Rubric: <strong className="text-gray-200">{resultData.rubric?.name}</strong> ({resultData.rubric?.totalMarks} marks)</span>
+                    {resultData.evaluator?.name && <span>Evaluated by <strong className="text-gray-200">{resultData.evaluator.name}</strong></span>}
+                    {resultData.finalizedAt && <span>on {new Date(resultData.finalizedAt).toLocaleDateString()}</span>}
+                  </div>
+
+                  <div className="overflow-x-auto border border-white/10 rounded-xl">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-white/5 text-left">
+                          <th className="px-4 py-2.5 text-gray-400 font-medium">Member</th>
+                          {(resultData.rubric?.criteria || []).map((crit: any) => (
+                            <th key={crit.key} className="px-3 py-2.5 text-gray-400 font-medium text-center whitespace-nowrap" title={crit.description}>
+                              {crit.label}<span className="text-gray-600"> /{crit.maxMarks}</span>
+                            </th>
+                          ))}
+                          <th className="px-4 py-2.5 text-emerald-300 font-medium text-center">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {resultData.memberScores.map((m: any) => (
+                          <tr key={m.user?._id || m.user?.name} className="border-t border-white/5">
+                            <td className="px-4 py-3 text-white font-medium whitespace-nowrap">{m.user?.name || 'Member'}</td>
+                            {(resultData.rubric?.criteria || []).map((crit: any) => (
+                              <td key={crit.key} className="px-3 py-3 text-center text-gray-300">{m.scores?.[crit.key] ?? 0}</td>
+                            ))}
+                            <td className="px-4 py-3 text-center font-bold text-emerald-300">{m.total}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {resultData.overallComments && (
+                    <div className="border border-white/10 bg-white/[0.02] rounded-xl p-4">
+                      <p className="text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Evaluator Comments</p>
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{resultData.overallComments}</p>
+                    </div>
+                  )}
+
+                  {resultData.memberScores.some((m: any) => m.comments) && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Individual Feedback</p>
+                      {resultData.memberScores.filter((m: any) => m.comments).map((m: any) => (
+                        <div key={m.user?._id} className="border border-white/5 rounded-lg p-3">
+                          <p className="text-sm font-medium text-gray-200 mb-0.5">{m.user?.name}</p>
+                          <p className="text-sm text-gray-400 whitespace-pre-wrap">{m.comments}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showShareProject && (() => {
