@@ -1176,14 +1176,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     };
   }, []);
 
-  // The displayed status reflects real connectivity. Realtime collaboration
-  // works over EITHER transport - the Yjs CRDT channel or the socket.io
-  // fallback - so we are only truly offline when BOTH are down (or the
-  // network is). A stuck 'offline' value from a transient error must not
-  // persist while an actual connection exists.
-  const realtimeConnected = isNetworkOnline && (socketConnected || yjsConnected);
+  // The displayed status reflects TRUE network connectivity, not realtime
+  // channel health. "Offline" must only appear when the browser actually has
+  // no internet (navigator.onLine === false). If the network is up but the
+  // collab channels are unreachable, edits still persist via HTTP saves, so
+  // the dot stays green (Synced/Saving) and the tooltip explains the
+  // degraded realtime state instead of a misleading "Offline".
+  const realtimeConnected = socketConnected || yjsConnected;
   const effectiveSyncStatus: 'synced' | 'saving' | 'offline' =
-    !realtimeConnected ? 'offline' : syncStatus === 'offline' ? 'synced' : syncStatus;
+    !isNetworkOnline ? 'offline' : syncStatus === 'offline' ? 'synced' : syncStatus;
 
 
   // Save file content to the database (debounced)
@@ -2547,13 +2548,14 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 <div className="flex items-center gap-3">
                   {/* Sync status */}
                   <span className="collab-sync-status" title={
-                    effectiveSyncStatus === 'synced' ? 'All changes synced'
+                    effectiveSyncStatus === 'offline' ? 'You are offline - changes will save when you reconnect'
                     : effectiveSyncStatus === 'saving' ? 'Saving changes...'
-                    : 'Connection lost - offline'
+                    : realtimeConnected ? 'Live - realtime collaboration active'
+                    : 'Synced - realtime collaboration unavailable (changes still save)'
                   }>
                     <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
                     <span>
-                      {effectiveSyncStatus === 'synced' ? 'Synced' : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                      {effectiveSyncStatus === 'synced' ? (realtimeConnected ? 'Live' : 'Synced') : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
                     </span>
                   </span>
                   <span className="flex items-center gap-1">
