@@ -316,6 +316,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [remoteSelections, setRemoteSelections] = useState<Record<string, any>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; file?: string; color: string }>>({});
   const [chatTypingUsers, setChatTypingUsers] = useState<Record<string, { name: string }>>({});
+  const [isNetworkOnline, setIsNetworkOnline] = useState<boolean>(
+    typeof window !== 'undefined' ? navigator.onLine : true
+  );
   const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
@@ -334,9 +337,18 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const ydocRef = useRef<Y.Doc | null>(null);
   const yproviderRef = useRef<WebsocketProvider | null>(null);
   const ybindingRef = useRef<MonacoBinding | null>(null);
+  // Whether the Yjs websocket is actually CONNECTED (not merely bound). The
+  // binding is created unconditionally, so its existence proves nothing about
+  // connectivity - this ref is what decides if realtime sync works.
+  const yjsConnectedRef = useRef(false);
+  const [yjsConnected, setYjsConnected] = useState(false);
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedContentRef = useRef<Record<string, string>>({});
+  // Pending save that failed due to a transient network error - retried
+  // automatically once connectivity is restored.
+  const pendingSaveRef = useRef<{ filePath: string; content: string } | null>(null);
+  const saveRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyTabsRef = useRef<Record<string, boolean>>({});
   const cursorDecorationsRef = useRef<Record<string, string[]>>({});
   const selectionDecorationsRef = useRef<Record<string, string[]>>({});
@@ -495,6 +507,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       });
       yproviderRef.current = provider;
 
+      // Track Yjs connectivity. This is what decides whether the socket.io
+      // file-change fallback needs to carry live typing instead.
+      provider.on('status', ({ status }: { status: string }) => {
+        const connected = status === 'connected';
+        yjsConnectedRef.current = connected;
+        setYjsConnected(connected);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Realtime] Yjs ${status} for project:${project._id}`);
+        }
+      });
+
       // Set user awareness info (name + color) for remote cursors
       provider.awareness.setLocalStateField('user', {
         name: session?.user?.name || 'Anonymous',
@@ -626,13 +649,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       }
     });
 
-    // Live code updates from collaborators. Registered once per connection so
-    // it keeps working across reconnects and file switches.
-    // When the Yjs binding is active, Yjs handles the realtime sync, so we
-    // skip the socket-based fallback to avoid double-applying content.
+    // Live code updates from collaborators (socket.io fallback used when the
+    // Yjs CRDT channel is unavailable, e.g. server down / ws blocked).
+    // Registered once per connection so it keeps working across reconnects and
+    // file switches.
     socket.on('file-updated', ({ file, content }: { file: string; content: string }) => {
-      if (ybindingRef.current) return;
       if (file !== activeFilePathRef.current) return;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Realtime] Received remote change for ${file} (fallback)`);
+      }
       applyRemoteContent(content);
     });
 
@@ -644,7 +669,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       // Backfill chat messages missed while disconnected (no refresh needed).
       fetchLatestChatMessages();
     });
-
     socket.on('disconnect', () => {
       setSyncStatus('offline');
       setSocketConnected(false);
@@ -1113,6 +1137,55 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
   const [errors, setErrors] = useState<any[]>([]);
 
+  // Ref mirror of saveFile so retry callbacks always use the latest closure
+  // (assigned below, after saveFile is defined)
+  const saveFileRef = useRef<typeof saveFile | null>(null);
+
+  // Realtime connectivity tracking: listen to browser network events and sync
+  // the status + force socket reconnection when the network comes back.
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsNetworkOnline(false);
+      setSyncStatus('offline');
+    };
+    const handleOnline = () => {
+      setIsNetworkOnline(true);
+      // Force socket.io to reconnect immediately instead of waiting for its
+      // own backoff timer.
+      const socket = socketRef.current;
+      if (socket && !socket.connected) {
+        socket.connect();
+      } else {
+        setSyncStatus('synced');
+      }
+      // Flush any save that failed while we were offline.
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        if (saveRetryTimeoutRef.current) clearTimeout(saveRetryTimeoutRef.current);
+        saveRetryTimeoutRef.current = setTimeout(() => {
+          saveFileRef.current?.(pending.filePath, pending.content);
+        }, 500);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      if (saveRetryTimeoutRef.current) clearTimeout(saveRetryTimeoutRef.current);
+    };
+  }, []);
+
+  // The displayed status reflects real connectivity. Realtime collaboration
+  // works over EITHER transport - the Yjs CRDT channel or the socket.io
+  // fallback - so we are only truly offline when BOTH are down (or the
+  // network is). A stuck 'offline' value from a transient error must not
+  // persist while an actual connection exists.
+  const realtimeConnected = isNetworkOnline && (socketConnected || yjsConnected);
+  const effectiveSyncStatus: 'synced' | 'saving' | 'offline' =
+    !realtimeConnected ? 'offline' : syncStatus === 'offline' ? 'synced' : syncStatus;
+
+
   // Save file content to the database (debounced)
   const saveFile = useCallback((filePath: string, content: string) => {
     if (!project) return;
@@ -1139,6 +1212,11 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
         if (res.ok) {
           lastSavedContentRef.current[filePath] = content;
+          pendingSaveRef.current = null;
+          if (saveRetryTimeoutRef.current) {
+            clearTimeout(saveRetryTimeoutRef.current);
+            saveRetryTimeoutRef.current = null;
+          }
           setSyncStatus('synced');
           const now = new Date();
           setLastSavedAt(now);
@@ -1155,10 +1233,24 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         }
       } catch (err) {
         console.error('Failed to save file:', err);
-        setSyncStatus('offline');
+        // Only mark offline if we truly lost connectivity. Otherwise keep the
+        // save pending and retry with backoff - one failed request doesn't
+        // mean we're offline.
+        pendingSaveRef.current = { filePath, content };
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setSyncStatus('offline');
+        } else if (saveRetryTimeoutRef.current) {
+          clearTimeout(saveRetryTimeoutRef.current);
+        }
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+          saveRetryTimeoutRef.current = setTimeout(() => {
+            saveFileRef.current?.(filePath, content);
+          }, 3000);
+        }
       }
     }, 800);
   }, [project, session?.user?.id, session?.user?.name]);
+  saveFileRef.current = saveFile;
 
   const handleEditorChange = (value: string | undefined) => {
     if (isRemoteUpdateRef.current) return;
@@ -1203,9 +1295,15 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }, 3000);
 
     // Broadcast file change to other users (skip identical payloads).
-    // When the Yjs binding is active, Yjs handles the realtime sync, so we
-    // skip the socket-based fallback to avoid double-broadcasting.
-    if (!ybindingRef.current && lastEmittedContentRef.current[activeFile.path] !== value) {
+    // Yjs is the primary realtime transport (CRDT merge, cursors). When the
+    // Yjs websocket is NOT actually connected, fall back to socket.io so live
+    // typing still propagates. The fallback never runs while Yjs is healthy,
+    // so there is no double-broadcast.
+    const yjsLive = !!ybindingRef.current && yjsConnectedRef.current;
+    if (!yjsLive && lastEmittedContentRef.current[activeFile.path] !== value) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Realtime] Broadcast local change (fallback) for ${activeFile.path}`);
+      }
       lastEmittedContentRef.current[activeFile.path] = value;
       socketRef.current?.emit('file-change', {
         projectId: project._id,
@@ -2449,13 +2547,13 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                 <div className="flex items-center gap-3">
                   {/* Sync status */}
                   <span className="collab-sync-status" title={
-                    syncStatus === 'synced' ? 'All changes synced'
-                    : syncStatus === 'saving' ? 'Saving changes...'
+                    effectiveSyncStatus === 'synced' ? 'All changes synced'
+                    : effectiveSyncStatus === 'saving' ? 'Saving changes...'
                     : 'Connection lost - offline'
                   }>
-                    <span className={`collab-sync-dot ${syncStatus === 'saving' ? 'saving' : syncStatus === 'offline' ? 'offline' : 'synced'}`} />
+                    <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
                     <span>
-                      {syncStatus === 'synced' ? 'Synced' : syncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                      {effectiveSyncStatus === 'synced' ? 'Synced' : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
                     </span>
                   </span>
                   <span className="flex items-center gap-1">
