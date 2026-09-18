@@ -137,6 +137,9 @@ export const authOptions: NextAuthOptions = {
               provider: 'google',
               emailVerified: true,
               skills: [],
+              // Google signups are Project Builders by default. The evaluator
+              // role is granted separately (invite key or existing evaluator).
+              role: 'builder',
             });
             user.id = newUser._id.toString();
           } else {

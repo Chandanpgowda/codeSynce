@@ -79,6 +79,11 @@ interface OpenTab {
   isDirty: boolean;
 }
 
+// Monaco EditorCursorStickiness.Never (enum: 0=Exact,1=Before,2=After,3=Never).
+// Inlined as a literal because monaco.editor.EditorCursorStickiness is undefined
+// in some production builds, which crashed when rendering remote cursors.
+const CURSOR_STICKINESS_NEVER = 3;
+
 // Custom dark theme for Monaco
 const CUSTOM_THEMES = {
   'vs-code-dark': {
@@ -885,7 +890,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         options: {
           className: 'remote-cursor',
           beforeContentClassName: `remote-cursor-${userId}`,
-          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          stickiness: CURSOR_STICKINESS_NEVER,
           zIndex: 25,
         },
       });
@@ -895,7 +900,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
         options: {
           afterContentClassName: `remote-cursor-label-${userId}`,
-          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          stickiness: CURSOR_STICKINESS_NEVER,
           zIndex: 30,
         },
       });
@@ -955,7 +960,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         ),
         options: {
           className: `remote-selection-${userId}`,
-          stickiness: monaco.editor.EditorCursorStickiness.Never,
+          stickiness: CURSOR_STICKINESS_NEVER,
           zIndex: 20,
         },
       });

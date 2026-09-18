@@ -58,6 +58,9 @@ export async function POST(request: NextRequest) {
         emailVerified: type === 'email',
         phoneVerified: type === 'phone',
         skills: [],
+        // Any self-signed-up user is a Project Builder. The evaluator role is
+        // granted separately via /api/auth/roles/evaluator (invite key or grant).
+        role: 'builder',
       });
     } else {
       // Sign in - find existing user
