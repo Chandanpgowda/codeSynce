@@ -54,10 +54,10 @@ export default function SignUpPage() {
         return data.error || 'Invalid or expired code';
       }
 
-      // Create a session with the NextAuth credentials provider
+      // Create a session with the NextAuth credentials provider using the password
       const result = await signIn('credentials', {
         identifier: creds.email,
-        code,
+        password: creds.password,
         redirect: false,
       });
       if (result?.error) {
