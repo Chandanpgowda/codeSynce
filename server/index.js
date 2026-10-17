@@ -1,4 +1,9 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
+// Load .env.local only if present (local dev). On Render, use environment variables set in dashboard.
+try {
+  require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
+} catch (_) {
+  // .env.local not present - relying on platform environment variables
+}
 
 const { Server } = require('socket.io');
 const http = require('http');
