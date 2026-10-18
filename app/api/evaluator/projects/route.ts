@@ -4,6 +4,8 @@ import Project from '@/models/Project';
 import Evaluation from '@/models/Evaluation';
 import { requireEvaluator } from '@/lib/auth-guard';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Evaluator dashboard: projects assigned/available to this evaluator.
  * EVALUATOR ONLY.

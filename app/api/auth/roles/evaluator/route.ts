@@ -3,6 +3,8 @@ import dbConnect from '@/lib/db';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth-guard';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Controlled evaluator on-boarding.
  *
