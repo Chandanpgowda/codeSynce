@@ -35,8 +35,8 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const isOwner = project.owner.toString() === session.user.id;
-    const isMember = project.members.some((member: import('mongoose').Types.ObjectId) => member.toString() === session.user.id);
+    const isOwner = project.owner && project.owner._id && project.owner.toString() === session.user.id;
+    const isMember = project.members.some((member: any) => member && member.toString && member.toString() === session.user.id);
     if (!project.isPublic && !isOwner && !isMember) {
       return NextResponse.json({ error: 'You do not have access to this private project' }, { status: 403 });
     }

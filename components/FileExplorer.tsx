@@ -596,9 +596,9 @@ export default function FileExplorer({ projectId, files, activeFile, onFileSelec
               </svg>
               Delete
             </button>
-          </div>
-        </>
-      )}
-    </div>
+           </div>
+         </>
+       )}
+     </div>
   );
 }

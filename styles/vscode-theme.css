@@ -4,17 +4,96 @@
 
 :root {
   /* VS Code Dark core colors */
-  --vscode-bg: #1e1e1e;           /* Editor background */
-  --vscode-text: #cccccc;         /* Primary text */
-  --vscode-tab-bg: #2d2d2d;       /* Tabs header bar */
-  --vscode-side-bg: #252526;      /* Side Bar / Explorer */
-  --vscode-activity-bg: #333333;  /* Activity Bar (far left) */
-  --vscode-border: #3c3c3c;       /* Panel separators / borders */
-  --vscode-status-bg: #007acc;    /* Bottom status bar */
-  --vscode-status-border: #005a9e;
+  --vscode-bg-main: #1e1e1e;          /* Main editor background */
+  --vscode-text-main: #cccccc;        /* Default light gray text */
+   --vscode-text-muted: #858585;       /* Subtitles / hidden text */
+  --vscode-bg-tabs: #2d2d2d;          /* Editor tabs wrapper */
+  --vscode-bg-sidebar: #252526;       /* Sidebar/Explorer background */
+  --vscode-bg-activitybar: #333333;   /* Far left activity menu */
+  --vscode-border-color: #3c3c3c;     /* UI structural separation line */
+  --vscode-bg-statusbar: #007acc;     /* Blue bottom status bar */
+  --vscode-bg-terminal: #1e1e1e;      /* Integrated terminal floor */
 
   /* Derived / supporting colors (dark) */
-  --vscode-tab-inactive-bg: #1e1e1e;
+  --vscode-bg-terminal: #1e1e1e;      /* Integrated terminal floor */
+}
+
+/* ==========================================================================
+   Structural Flex Grid (Prevents browser scrollbars, creates desktop app shell)
+   ========================================================================== */
+* {
+   box-sizing: border-box;
+   margin: 0;
+   padding: 0;
+}
+
+body, html {
+   height: 100%;
+   width: 100%;
+   overflow: hidden; /* Prevents whole-page scrolling */
+   font-family: var(--vscode-font);
+   background-color: var(--vscode-bg-main);
+   color: var(--vscode-text-main);
+   font-size: 13px;
+}
+
+/* Outer wrapper holding the main content windows (excluding status bar) */
+.vscode-app-container {
+   display: flex;
+   height: calc(100vh - 22px); /* Leaves exact space for 22px status bar */
+   width: 100vw;
+}
+
+/* ==========================================================================
+   1. Activity Bar Layout (Far Left - 48px Fixed Width)
+   ========================================================================== */
+.vscode-activity-bar {
+   width: 48px;
+   height: 100%;
+   background-color: var(--vscode-bg-activitybar);
+   display: flex;
+   flex-direction: column;
+   justify-content: space-between; /* Pushes settings gear icon to the bottom */
+   align-items: center;
+   border-right: 1px solid var(--vscode-border-color);
+}
+
+.vscode-activity-menu {
+   display: flex;
+   flex-direction: column;
+   width: 100%;
+}
+
+.vscode-activity-item {
+   height: 48px;
+   width: 100%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   color: var(--vscode-text-muted);
+   font-size: 20px;
+   position: relative;
+}
+
+.vscode-activity-item:hover {
+   color: #ffffff;
+}
+
+/* Visual active vertical line indicator on the left side of the icon */
+.vscode-activity-item.active {
+   color: #ffffff;
+}
+.vscode-activity-item.active::before {
+   content: '';
+   position: absolute;
+   left: 0;
+   top: 0;
+   height: 100%;
+   width: 2px;
+   background-color: #ffffff;
+}
+:root {
   --vscode-tab-border: #333333;
   --vscode-panel-bg: #252526;
   --vscode-input-bg: #3c3c3c;
@@ -159,7 +238,7 @@
 
 /* ============ Terminal panel ============ */
 .vscode-terminal-panel {
-  height: 180px;
+  height: 250px;
   border-top: 1px solid var(--vscode-border);
   background: var(--vscode-bg);
   display: flex;

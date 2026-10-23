@@ -383,11 +383,9 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
           </button>
         </div>
       </div>
-
-      {/* Terminal Output */}
       {isOpen && (
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="px-3 py-2 border-b border-dark-700 shrink-0">
+        <div className="vscode-terminal-pane flex-1 min-h-0 flex flex-col">
+          <div className="px-3 py-2 border-b border-dark-700 shrink-0 vscode-terminal-header">
             <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1" htmlFor="execution-input">Program input</label>
             <textarea
               id="execution-input"
@@ -398,7 +396,7 @@ export default function Terminal({ projectId, language, code, fileName, fileLang
               disabled={runningCode}
             />
           </div>
-        <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1" ref={outputRef}>
+        <div className="flex-1 overflow-y-auto p-3 font-mono text-xs space-y-1 vscode-terminal-body" ref={outputRef}>
           {output.map((line, i) => (
             <div
               key={i}
