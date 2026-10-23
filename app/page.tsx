@@ -1,12 +1,15 @@
-'use client';
-
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { LogoMark } from '@/components/Logo';
 import GhostFibers from '@/components/GhostFibers';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { Activity, BarChart3, Users, Code2, ShieldCheck, ArrowRight } from 'lucide-react';
-import { Editor } from '@monaco-editor/react';
+import '@/styles/vscode-theme.css';
+
+const Editor = dynamic(() => import('@monaco-editor/react').then((mod) => mod.Editor), {
+  ssr: false,
+});
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
