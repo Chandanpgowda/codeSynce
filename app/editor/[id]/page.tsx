@@ -2313,375 +2313,370 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         onOpenFile={handleOpenFileFromSearch}
       />
 
-      {/* Main Content - VS Code style layout */}
+      {/* Main Content - fits full screen */}
       <div className="flex flex-1 overflow-hidden">
-        {/* File Explorer */}
-<div className="vscode-root">
+        {/* File Explorer (left) */}
         {showSidebar && (
-          <FileExplorer
-            projectId={project._id}
-            files={project.files}
-            activeFile={activeFile}
-            onFileSelect={openFileInTab}
-            onFilesChange={() => {
-              setRefreshKey((k) => k + 1);
-              fetchProject();
-            }}
-          />
+          <div className="w-64 shrink-0 border-r" style={{ background: panelBg, borderColor }}>
+            <FileExplorer
+              projectId={project._id}
+              files={project.files}
+              activeFile={activeFile}
+              onFileSelect={openFileInTab}
+              onFilesChange={() => {
+                setRefreshKey((k) => k + 1);
+                fetchProject();
+              }}
+            />
+          </div>
         )}
 
         {/* Center Area: Editor on top, Terminal at bottom */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Editor + Right Panel Row */}
-          <div className="flex-1 flex min-h-0">
-            {/* Editor */}
-            <div className="flex-1 flex flex-col min-w-0">
-              {/* Editor Tabs */}
-              <div className="flex items-center border-b overflow-x-auto shrink-0" style={{ background: tabInactiveBg, borderColor }}>
-                {openTabs.length === 0 && (
-                  <div className="px-4 py-2 text-sm opacity-50">No files open</div>
-                )}
-                {openTabs.map((tab) => {
-                  const isActive = activeFile?.path === tab.file.path;
-                  return (
-                    <div
-                      key={tab.file.path}
-                      onClick={() => switchActiveFile(tab.file)}
-                      onMouseDown={(e) => {
-                        if (e.button === 1) {
-                          e.preventDefault();
+        <div className="flex-1 flex flex-col min-w-0" style={{ background: bgColor }}>
+          {/* Editor Tabs */}
+          <div className="flex items-center border-b overflow-x-auto shrink-0" style={{ background: tabInactiveBg, borderColor }}>
+            {openTabs.length === 0 && (
+              <div className="px-4 py-2 text-sm opacity-50">No files open</div>
+            )}
+            {openTabs.map((tab) => {
+              const isActive = activeFile?.path === tab.file.path;
+              return (
+                <div
+                  key={tab.file.path}
+                  onClick={() => switchActiveFile(tab.file)}
+                  onMouseDown={(e) => {
+                    if (e.button === 1) {
+                      e.preventDefault();
+                      closeTab(tab.file.path);
+                    }
+                  }}
+                  className={`group flex items-center gap-1.5 px-3 py-2 text-sm border-r whitespace-nowrap cursor-pointer select-none transition-colors ${
+                    isActive ? 'font-normal' : ''
+                  }`}
+                  style={{
+                    background: isActive ? tabBg : 'transparent',
+                    borderRightColor: borderColor,
+                    color: isActive ? textColor : '#8b949e',
+                  }}
+                >
+                  <span className="text-xs">{getFileIcon(tab.file)}</span>
+                  <span className="text-[13px]">{tab.file.name}</span>
+                  <span className="relative">
+                    {tab.isDirty ? (
+                      <span
+                        className="w-2.5 h-2.5 rounded-full inline-block"
+                        style={{ background: '#e5c07b' }}
+                        title="Unsaved changes"
+                      />
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           closeTab(tab.file.path);
-                        }
-                      }}
-                      className={`group flex items-center gap-1.5 px-3 py-2 text-sm border-r whitespace-nowrap cursor-pointer select-none transition-colors ${
-                        isActive ? 'font-normal' : ''
-                      }`}
-                      style={{
-                        background: isActive ? tabBg : 'transparent',
-                        borderRightColor: borderColor,
-                        color: isActive ? textColor : '#8b949e',
-                      }}
-                    >
-                      <span className="text-xs">{getFileIcon(tab.file)}</span>
-                      <span className="text-[13px]">{tab.file.name}</span>
-                      <span className="relative">
-                        {tab.isDirty ? (
-                          <span
-                            className="w-2.5 h-2.5 rounded-full inline-block"
-                            style={{ background: '#e5c07b' }}
-                            title="Unsaved changes"
-                          />
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              closeTab(tab.file.path);
-                            }}
-                            className={`p-0.5 rounded-full hover:opacity-100 ${isActive ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
-                            title="Close Tab (Ctrl+W)"
-                            style={{ color: '#8b949e' }}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Breadcrumbs */}
-              {showBreadcrumbs && activeFile && (
-                <div className="flex items-center gap-0.5 px-4 py-1 border-b text-xs overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
-                  {breadcrumbs.map((crumb, i) => (
-                    <span key={crumb.path} className="flex items-center gap-0.5">
-                      <button
-                        onClick={() => {
-                          if (!crumb.isLast && project) {
-                            const f = findFileByPath(project.files, crumb.path);
-                            if (f) openFileInTab(f);
-                          }
                         }}
-                        className={`hover:text-blue-400 ${crumb.isLast ? 'opacity-90' : 'opacity-60'}`}
+                        className={`p-0.5 rounded-full hover:opacity-100 ${isActive ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
+                        title="Close Tab (Ctrl+W)"
+                        style={{ color: '#8b949e' }}
                       >
-                        {crumb.name}
-                      </button>
-                      {!crumb.isLast && (
-                        <span className="opacity-50">›</span>
-                      )}
-                    </span>
-                  ))}
-                  {/* Users viewing this file */}
-                  {currentFileOnlineUsers.length > 0 && (
-                    <div className="flex -space-x-1.5 mr-2">
-                      {currentFileOnlineUsers.slice(0, 3).map((user, i) => (
-                        <div
-                          key={i}
-                          title={`${user.name} is viewing this file`}
-                          className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px] font-bold"
-                          style={{ background: user.color || '#4da3ff', borderColor: tabBg, color: '#fff' }}
-                        >
-                          {user.name?.charAt(0).toUpperCase()}
-                        </div>
-                      ))}
-                      {currentFileOnlineUsers.length > 3 && (
-                        <div className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px]" style={{ background: '#4d4d4d', borderColor: tabBg, color: '#fff' }}>
-                          +{currentFileOnlineUsers.length - 3}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div className="ml-auto flex items-center gap-3">
-                    {errors.length > 0 && (
-                      <button
-                        onClick={() => {
-                          editorRef.current?.trigger('errors', 'editor.action.marker.next', {});
-                        }}
-                        className="flex items-center gap-1 text-red-400 hover:text-red-300"
-                        title={`${errors.length} errors in file`}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                        {errors.length}
                       </button>
                     )}
-                  </div>
+                  </span>
                 </div>
-              )}
+              );
+            })}
+          </div>
 
-              {/* Search & Replace */}
-              <SearchAndReplace
-                isOpen={searchOpen}
-                onClose={() => setSearchOpen(false)}
-                editorRef={editorRef}
-                monacoRef={monacoRef}
-              />
-
-              {/* Monaco Editor */}
-              <div className="flex-1 min-h-0 vscode-editor-container relative" style={{ background: bgColor }}>
-                {activeFile && (
-                  <Editor
-                    key={refreshKey}
-                    height="100%"
-                    defaultLanguage={activeFile.language || 'javascript'}
-                    language={activeFile.language || 'javascript'}
-                    value={activeFile.content || ''}
-                    theme={theme}
-                    onChange={handleEditorChange}
-                    onMount={handleEditorMount}
-                    options={editorOptions}
-                    beforeMount={(monaco) => {
-                      Object.entries(CUSTOM_THEMES).forEach(([name, themeData]) => {
-                        monaco.editor.defineTheme(name, themeData as any);
-                      });
-                    }}
-                  />
-                )}
-
-                {/* Live typing watermark overlay */}
-                {(() => {
-                  const typingHere = Object.entries(typingUsers).filter(
-                    ([id, t]) => id !== session?.user?.id && (!t.file || t.file === activeFile?.path)
-                  );
-                  if (typingHere.length === 0) return null;
-                  const names = typingHere.map(([, t]) => t.name);
-                  const label =
-                    names.length === 1
-                      ? `${names[0]} is typing…`
-                      : names.length === 2
-                      ? `${names[0]} and ${names[1]} are typing…`
-                      : `${names.length} people are typing…`;
-                  const accent = typingHere[0][1].color || '#4da3ff';
-                  return (
-                    <div
-                      className="typing-watermark absolute bottom-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg pointer-events-none"
-                      style={{
-                        background: 'rgba(30, 30, 30, 0.85)',
-                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                        backdropFilter: 'blur(4px)',
-                      }}
-                    >
-                      <span className="flex items-center gap-0.5">
-                        <span className="typing-dot" style={{ background: accent }} />
-                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.2s' }} />
-                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.4s' }} />
-                      </span>
-                      <span className="text-xs font-medium" style={{ color: '#cfd8dc' }}>
-                        {label}
-                      </span>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Status Bar */}
-              <div className="flex items-center justify-between px-3 py-[1px] text-[11px] shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    {activeFile?.language || 'Plain Text'}
-                  </span>
-                  <span>
-                    Ln {statistics.line}, Col {statistics.column}
-                  </span>
-                  <span>
-                    {statistics.lineCount} lines
-                  </span>
-                  {statistics.selectedText && (
-                    <span>
-                      {statistics.selectedText.length} chars selected
-                    </span>
-                  )}
-                  {statistics.selectedText && (
-                    <button
-                      onClick={() => {
-                        setActivePanel('ai');
-                      }}
-                      className="flex items-center gap-1 hover:bg-white/20 rounded px-1.5 py-0.5 transition-colors"
-                      title="AI Actions (Ctrl+Shift+A)"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                      <span className="font-medium">AI</span>
-                    </button>
-                  )}
-                </div>
-                <div className="flex items-center gap-3">
-                  {/* Sync status */}
-                  <span className="collab-sync-status" title={
-                    effectiveSyncStatus === 'offline' ? 'You are offline - changes will save when you reconnect'
-                    : effectiveSyncStatus === 'saving' ? 'Saving changes...'
-                    : realtimeConnected ? 'Live - realtime collaboration active'
-                    : 'Synced - realtime collaboration unavailable (changes still save)'
-                  }>
-                    <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
-                    <span>
-                      {effectiveSyncStatus === 'synced' ? (realtimeConnected ? 'Live' : 'Synced') : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
-                    </span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 1.096A4.001 4.001 0 003 15z" />
-                    </svg>
-                    UTF-8
-                  </span>
-                  <span>Spaces: 2</span>
-                  <span>LF</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Panel */}
-            <div className="w-80 border-l flex flex-col shrink-0" style={{ background: panelBg, borderColor }}>
-              {/* Panel Tabs */}
-              <div className="flex border-b shrink-0" style={{ borderColor }}>
-                <button
-                  onClick={() => setActivePanel('chat')}
-                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
-                    activePanel === 'chat'
-                      ? 'text-blue-400 border-blue-500'
-                      : 'opacity-60 hover:opacity-100 border-transparent'
-                  }`}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => setActivePanel('ai')}
-                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
-                    activePanel === 'ai'
-                      ? 'text-blue-400 border-blue-500'
-                      : 'opacity-60 hover:opacity-100 border-transparent'
-                  }`}
-                >
-                  AI Assistant
-                </button>
-                <button
-                  onClick={() => setActivePanel('members')}
-                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
-                    activePanel === 'members'
-                      ? 'text-blue-400 border-blue-500'
-                      : 'opacity-60 hover:opacity-100 border-transparent'
-                  }`}
-                >
-                  Members
-                </button>
-              </div>
-
-              {/* Panel Content */}
-              <div className="flex-1 overflow-hidden">
-                {activePanel === 'chat' && (
-                  <ChatPanel
-                    projectId={project._id}
-                    messages={chatMessages}
-                    socket={socketInstance}
-                    currentUser={session?.user ?? null}
-                    onSendMessage={handleSendChatMessage}
-                    typingUsers={chatTypingUsers}
-                  />
-                )}
-                {activePanel === 'ai' && (
-                  <AIPanel
-                    code={activeFile?.content || ''}
-                    language={activeFile?.language || 'javascript'}
-                    projectName={project.name}
-                    projectId={project._id}
-                    selectedCode={statistics.selectedText || ''}
-                    selectedAction={selectedAIAction}
-                    onActionExecuted={() => setSelectedAIAction(null)}
-                    onAction={(action, result) => {
-                      if (action !== 'chat') {
-                        console.log('AI action:', action, result);
+          {/* Breadcrumbs */}
+          {showBreadcrumbs && activeFile && (
+            <div className="flex items-center gap-0.5 px-4 py-1 border-b text-xs overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
+              {breadcrumbs.map((crumb, i) => (
+                <span key={crumb.path} className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => {
+                      if (!crumb.isLast && project) {
+                        const f = findFileByPath(project.files, crumb.path);
+                        if (f) openFileInTab(f);
                       }
                     }}
-                  />
-                )}
-                {activePanel === 'members' && (
-                  <div className="h-full flex flex-col">
-                    <CollaborationPanel
-                      onlineUsers={onlineUsers}
-                      projectMembers={project.members}
-                      projectOwner={project.owner}
-                      currentUserId={session?.user?.id}
-                      typingUsers={typingUsers}
-                      isProjectOwner={isOwner}
-                      onRemoveMember={handleRemoveMember}
-                      memberPermissions={project.memberPermissions}
-                      onPermissionChange={handlePermissionChange}
-                      projectDetails={{
-                        name: project.name,
-                        description: project.description,
-                        language: project.language,
-                        tags: project.tags,
-                        isPublic: project.isPublic,
-                      }}
-                      onUpdateProjectDetails={handleUpdateProjectDetails}
-                    />
-                    {!isOwner && <div className="px-4 pb-4"><button type="button" onClick={handleLeaveProject} className="w-full text-sm text-red-400 border border-red-500/30 rounded py-2 hover:bg-red-500/10">Leave project</button></div>}
-                  </div>
+                    className={`hover:text-blue-400 ${crumb.isLast ? 'opacity-90' : 'opacity-60'}`}
+                  >
+                    {crumb.name}
+                  </button>
+                  {!crumb.isLast && (
+                    <span className="opacity-50">›</span>
+                  )}
+                </span>
+              ))}
+              {/* Users viewing this file */}
+              {currentFileOnlineUsers.length > 0 && (
+                <div className="flex -space-x-1.5 mr-2">
+                  {currentFileOnlineUsers.slice(0, 3).map((user, i) => (
+                    <div
+                      key={i}
+                      title={`${user.name} is viewing this file`}
+                      className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px] font-bold"
+                      style={{ background: user.color || '#4da3ff', borderColor: tabBg, color: '#fff' }}
+                    >
+                      {user.name?.charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {currentFileOnlineUsers.length > 3 && (
+                    <div className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px]" style={{ background: '#4d4d4d', borderColor: tabBg, color: '#fff' }}>
+                      +{currentFileOnlineUsers.length - 3}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="ml-auto flex items-center gap-3">
+                {errors.length > 0 && (
+                  <button
+                    onClick={() => {
+                      editorRef.current?.trigger('errors', 'editor.action.marker.next', {});
+                    }}
+                    className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                    title={`${errors.length} errors in file`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    {errors.length}
+                  </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Search & Replace */}
+          <SearchAndReplace
+            isOpen={searchOpen}
+            onClose={() => setSearchOpen(false)}
+            editorRef={editorRef}
+            monacoRef={monacoRef}
+          />
+
+          {/* Monaco Editor */}
+          <div className="flex-1 min-h-0 relative" style={{ background: bgColor }}>
+            {activeFile && (
+              <Editor
+                key={refreshKey}
+                height="100%"
+                defaultLanguage={activeFile.language || 'javascript'}
+                language={activeFile.language || 'javascript'}
+                value={activeFile.content || ''}
+                theme={theme}
+                onChange={handleEditorChange}
+                onMount={handleEditorMount}
+                options={editorOptions}
+                beforeMount={(monaco) => {
+                  Object.entries(CUSTOM_THEMES).forEach(([name, themeData]) => {
+                    monaco.editor.defineTheme(name, themeData as any);
+                  });
+                }}
+              />
+            )}
+            {/* Live typing watermark overlay */}
+            {(() => {
+              const typingHere = Object.entries(typingUsers).filter(
+                ([id, t]) => id !== session?.user?.id && (!t.file || t.file === activeFile?.path)
+              );
+              if (typingHere.length === 0) return null;
+              const names = typingHere.map(([, t]) => t.name);
+              const label =
+                names.length === 1
+                  ? `${names[0]} is typing…`
+                  : names.length === 2
+                    ? `${names[0]} and ${names[1]} are typing…`
+                    : `${names.length} people are typing…`;
+              const accent = typingHere[0][1].color || '#4da3ff';
+              return (
+                <div
+                  className="typing-watermark absolute bottom-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg pointer-events-none"
+                  style={{
+                    background: 'rgba(30, 30, 30, 0.85)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                >
+                  <span className="flex items-center gap-0.5">
+                    <span className="typing-dot" style={{ background: accent }} />
+                    <span className="typing-dot" style={{ background: accent, animationDelay: '0.2s' }} />
+                    <span className="typing-dot" style={{ background: accent, animationDelay: '0.4s' }} />
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: '#cfd8dc' }}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Editor Status Bar */}
+          <div className="flex items-center justify-between px-3 py-[1px] text-[11px] shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {activeFile?.language || 'Plain Text'}
+              </span>
+              <span>
+                Ln {statistics.line}, Col {statistics.column}
+              </span>
+              <span>
+                {statistics.lineCount} lines
+              </span>
+              {statistics.selectedText && (
+                <span>
+                  {statistics.selectedText.length} chars selected
+                </span>
+              )}
+              {statistics.selectedText && (
+                <button
+                  onClick={() => {
+                    setActivePanel('ai');
+                  }}
+                  className="flex items-center gap-1 hover:bg-white/20 rounded px-1.5 py-0.5 transition-colors"
+                  title="AI Actions (Ctrl+Shift+A)"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <span className="font-medium">AI</span>
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Sync status */}
+              <span className="collab-sync-status" title={
+                effectiveSyncStatus === 'offline' ? 'You are offline - changes will save when you reconnect'
+                : effectiveSyncStatus === 'saving' ? 'Saving changes...'
+                : realtimeConnected ? 'Live - realtime collaboration active'
+                : 'Synced - realtime collaboration unavailable (changes still save)'
+              }>
+                <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
+                <span>
+                  {effectiveSyncStatus === 'synced' ? (realtimeConnected ? 'Live' : 'Synced') : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                </span>
+              </span>
+              <span className="flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 1.096A4.001 4.001 0 003 15z" />
+                </svg>
+                UTF-8
+              </span>
+              <span>Spaces: 2</span>
+              <span>LF</span>
             </div>
           </div>
 
-          {/* Terminal at bottom (VS Code style) */}
+          {/* Terminal at bottom */}
           {showTerminal && (
-            <Terminal
-              projectId={project._id}
-              language={project.language}
-              code={activeFile?.content || ''}
-              fileName={activeFile?.name || ''}
-              fileLanguage={activeFile?.language || ''}
-            />
+            <div className="h-64 shrink-0 border-t" style={{ background: panelBg, borderColor }}>
+              <Terminal
+                projectId={project._id}
+                language={project.language}
+                code={activeFile?.content || ''}
+                fileName={activeFile?.name || ''}
+                fileLanguage={activeFile?.language || ''}
+              />
+            </div>
           )}
+        </div>
+
+        {/* Right Panel (Chat / AI Assistant / Members) */}
+        <div className="w-80 shrink-0 border-l flex flex-col" style={{ background: panelBg, borderColor }}>
+          {/* Panel Tabs */}
+          <div className="flex border-b shrink-0" style={{ borderColor }}>
+            <button
+              onClick={() => setActivePanel('chat')}
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                activePanel === 'chat'
+                  ? 'text-blue-400 border-blue-500'
+                  : 'opacity-60 hover:opacity-100 border-transparent'
+              }`}
+            >
+              Chat
+            </button>
+            <button
+              onClick={() => setActivePanel('ai')}
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                activePanel === 'ai'
+                  ? 'text-blue-400 border-blue-500'
+                  : 'opacity-60 hover:opacity-100 border-transparent'
+              }`}
+            >
+              AI Assistant
+            </button>
+            <button
+              onClick={() => setActivePanel('members')}
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                activePanel === 'members'
+                  ? 'text-blue-400 border-blue-500'
+                  : 'opacity-60 hover:opacity-100 border-transparent'
+              }`}
+            >
+              Members
+            </button>
+          </div>
+
+          {/* Panel Content */}
+          <div className="flex-1 overflow-hidden">
+            {activePanel === 'chat' && (
+              <ChatPanel
+                projectId={project._id}
+                messages={chatMessages}
+                socket={socketInstance}
+                currentUser={session?.user ?? null}
+                onSendMessage={handleSendChatMessage}
+                typingUsers={chatTypingUsers}
+              />
+            )}
+            {activePanel === 'ai' && (
+              <AIPanel
+                code={activeFile?.content || ''}
+                language={activeFile?.language || 'javascript'}
+                projectName={project.name}
+                projectId={project._id}
+                selectedCode={statistics.selectedText || ''}
+                selectedAction={selectedAIAction}
+                onActionExecuted={() => setSelectedAIAction(null)}
+                onAction={(action, result) => {
+                  if (action !== 'chat') {
+                    console.log('AI action:', action, result);
+                  }
+                }}
+              />
+            )}
+            {activePanel === 'members' && (
+              <div className="h-full flex flex-col">
+                <CollaborationPanel
+                  onlineUsers={onlineUsers}
+                  projectMembers={project.members}
+                  projectOwner={project.owner}
+                  currentUserId={session?.user?.id}
+                  typingUsers={typingUsers}
+                  isProjectOwner={isOwner}
+                  onRemoveMember={handleRemoveMember}
+                  memberPermissions={project.memberPermissions}
+                  onPermissionChange={handlePermissionChange}
+                  projectDetails={{
+                    name: project.name,
+                    description: project.description,
+                    language: project.language,
+                    tags: project.tags,
+                    isPublic: project.isPublic,
+                  }}
+                  onUpdateProjectDetails={handleUpdateProjectDetails}
+                />
+                {!isOwner && <div className="px-4 pb-4"><button type="button" onClick={handleLeaveProject} className="w-full text-sm text-red-400 border border-red-500/30 rounded py-2 hover:bg-red-500/10">Leave project</button></div>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }
