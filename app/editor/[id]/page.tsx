@@ -17,20 +17,6 @@ import CommandPalette, { CommandItem } from '@/components/CommandPalette';
 import SearchAndReplace from '@/components/SearchAndReplace';
 import CollaborationPanel from '@/components/CollaborationPanel';
 import ShareProjectModal from '@/components/ShareProjectModal';
-import {
-  FileText,
-  Search,
-  GitBranch,
-  Extensions,
-  Terminal as TerminalIcon,
-  Settings,
-  Play,
-  StopCircle,
-  X,
-  Copy,
-  Layout,
-  Activity,
-} from 'lucide-react';
 import '@/styles/vscode-theme.css';
 
 interface ProjectFile {
@@ -331,7 +317,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
   const [statistics, setStatistics] = useState({ line: 1, column: 1, lineCount: 1, selectedText: '' });
   const [showSidebar, setShowSidebar] = useState(true);
-  const [activityBarTab, setActivityBarTab] = useState<'explorer' | 'search' | 'scm' | 'extensions' | 'terminal' | 'settings'>('explorer');
   const [isFormatting, setIsFormatting] = useState(false);
   const [remoteCursors, setRemoteCursors] = useState<Record<string, any>>({});
   const [remoteSelections, setRemoteSelections] = useState<Record<string, any>>({});
@@ -2046,9 +2031,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   }
 
   return (
-    <div className="vscode-root">
+    <div className="h-screen flex flex-col" style={{ background: bgColor, color: textColor }}>
       {/* Top Bar */}
-      <div className="vscode-topbar">
+      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b" style={{ background: panelBg, borderColor }}>
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/home')}
@@ -2328,130 +2313,88 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         onOpenFile={handleOpenFileFromSearch}
       />
 
-      {/* Main Body: Activity Bar + Sidebar + Main Panel */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Activity Bar */}
-        <aside className="vscode-activity-bar">
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'explorer' ? 'active' : ''}`}
-            onClick={() => {
-              setActivityBarTab('explorer');
-              setShowSidebar(true);
+      {/* Main Content - VS Code style layout */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* File Explorer */}
+<div className="vscode-root">
+        {showSidebar && (
+          <FileExplorer
+            projectId={project._id}
+            files={project.files}
+            activeFile={activeFile}
+            onFileSelect={openFileInTab}
+            onFilesChange={() => {
+              setRefreshKey((k) => k + 1);
+              fetchProject();
             }}
-            title="Explorer"
-          >
-            <FileText />
-          </div>
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'search' ? 'active' : ''}`}
-            onClick={() => {
-              setActivityBarTab('search');
-              setSearchOpen(true);
-            }}
-            title="Search"
-          >
-            <Search />
-          </div>
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'scm' ? 'active' : ''}`}
-            title="Source Control"
-          >
-            <GitBranch />
-          </div>
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'extensions' ? 'active' : ''}`}
-            title="Extensions"
-          >
-            <Extensions />
-          </div>
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'terminal' ? 'active' : ''}`}
-            onClick={() => {
-              setActivityBarTab('terminal');
-              setShowTerminal((v) => !v);
-            }}
-            title="Terminal"
-          >
-            <TerminalIcon />
-          </div>
-          <div
-            className={`vscode-activity-item ${activityBarTab === 'settings' ? 'active' : ''}`}
-            title="Settings"
-          >
-            <Settings />
-          </div>
-        </aside>
+          />
+        )}
 
-        {/* Sidebar Explorer */}
-        <aside className="vscode-sidebar">
-          <div className="vscode-sidebar-header">EXPLORER</div>
-          <div className="vscode-sidebar-body">
-            {showSidebar && (
-              <FileExplorer
-                projectId={project._id}
-                files={project.files}
-                activeFile={activeFile}
-                onFileSelect={openFileInTab}
-                onFilesChange={() => {
-                  setRefreshKey((k) => k + 1);
-                  fetchProject();
-                }}
-              />
-            )}
-          </div>
-        </aside>
-
-        {/* Main Editor Panel */}
-        <main className="vscode-main">
-          {/* Tabs Bar */}
-          <div className="vscode-tabs">
-            {openTabs.length === 0 ? (
-              <div className="vscode-tabs-empty">No files open</div>
-            ) : (
-              openTabs.map((tab) => {
-                const isActive = activeFile?.path === tab.file.path;
-                return (
-                  <div
-                    key={tab.file.path}
-                    onClick={() => switchActiveFile(tab.file)}
-                    onMouseDown={(e) => {
-                      if (e.button === 1) {
-                        e.preventDefault();
-                        closeTab(tab.file.path);
-                      }
-                    }}
-                    className={`vscode-tab-item group flex items-center gap-6 px-2 whitespace-nowrap cursor-pointer select-none transition-colors ${isActive ? 'active' : ''}`}
-                    style={{
-                      borderRightColor: borderColor,
-                    }}
-                  >
-                    <span className="text-xs">{getFileIcon(tab.file)}</span>
-                    <span className="text-[13px]">{tab.file.name}</span>
-                    {tab.isDirty && (
-                      <span className="vscode-tab-item-dirty" title="Unsaved changes" />
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeTab(tab.file.path);
+        {/* Center Area: Editor on top, Terminal at bottom */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Editor + Right Panel Row */}
+          <div className="flex-1 flex min-h-0">
+            {/* Editor */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Editor Tabs */}
+              <div className="flex items-center border-b overflow-x-auto shrink-0" style={{ background: tabInactiveBg, borderColor }}>
+                {openTabs.length === 0 && (
+                  <div className="px-4 py-2 text-sm opacity-50">No files open</div>
+                )}
+                {openTabs.map((tab) => {
+                  const isActive = activeFile?.path === tab.file.path;
+                  return (
+                    <div
+                      key={tab.file.path}
+                      onClick={() => switchActiveFile(tab.file)}
+                      onMouseDown={(e) => {
+                        if (e.button === 1) {
+                          e.preventDefault();
+                          closeTab(tab.file.path);
+                        }
                       }}
-                      className="ml-1 p-0.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-[#3c3c3c] transition-colors"
-                      aria-label="Close Tab (Ctrl+W)"
+                      className={`group flex items-center gap-1.5 px-3 py-2 text-sm border-r whitespace-nowrap cursor-pointer select-none transition-colors ${
+                        isActive ? 'font-normal' : ''
+                      }`}
+                      style={{
+                        background: isActive ? tabBg : 'transparent',
+                        borderRightColor: borderColor,
+                        color: isActive ? textColor : '#8b949e',
+                      }}
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
+                      <span className="text-xs">{getFileIcon(tab.file)}</span>
+                      <span className="text-[13px]">{tab.file.name}</span>
+                      <span className="relative">
+                        {tab.isDirty ? (
+                          <span
+                            className="w-2.5 h-2.5 rounded-full inline-block"
+                            style={{ background: '#e5c07b' }}
+                            title="Unsaved changes"
+                          />
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeTab(tab.file.path);
+                            }}
+                            className={`p-0.5 rounded-full hover:opacity-100 ${isActive ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
+                            title="Close Tab (Ctrl+W)"
+                            style={{ color: '#8b949e' }}
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
 
               {/* Breadcrumbs */}
               {showBreadcrumbs && activeFile && (
-                <div className="vscode-breadcrumbs">
+                <div className="flex items-center gap-0.5 px-4 py-1 border-b text-xs overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
                   {breadcrumbs.map((crumb, i) => (
                     <span key={crumb.path} className="flex items-center gap-0.5">
                       <button
@@ -2518,7 +2461,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               />
 
               {/* Monaco Editor */}
-              <div className="vscode-monaco-wrap">
+              <div className="flex-1 min-h-0 vscode-editor-container relative" style={{ background: bgColor }}>
                 {activeFile && (
                   <Editor
                     key={refreshKey}
@@ -2575,6 +2518,63 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               </div>
 
               {/* Status Bar */}
+              <div className="flex items-center justify-between px-3 py-[1px] text-[11px] shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {activeFile?.language || 'Plain Text'}
+                  </span>
+                  <span>
+                    Ln {statistics.line}, Col {statistics.column}
+                  </span>
+                  <span>
+                    {statistics.lineCount} lines
+                  </span>
+                  {statistics.selectedText && (
+                    <span>
+                      {statistics.selectedText.length} chars selected
+                    </span>
+                  )}
+                  {statistics.selectedText && (
+                    <button
+                      onClick={() => {
+                        setActivePanel('ai');
+                      }}
+                      className="flex items-center gap-1 hover:bg-white/20 rounded px-1.5 py-0.5 transition-colors"
+                      title="AI Actions (Ctrl+Shift+A)"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      <span className="font-medium">AI</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Sync status */}
+                  <span className="collab-sync-status" title={
+                    effectiveSyncStatus === 'offline' ? 'You are offline - changes will save when you reconnect'
+                    : effectiveSyncStatus === 'saving' ? 'Saving changes...'
+                    : realtimeConnected ? 'Live - realtime collaboration active'
+                    : 'Synced - realtime collaboration unavailable (changes still save)'
+                  }>
+                    <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
+                    <span>
+                      {effectiveSyncStatus === 'synced' ? (realtimeConnected ? 'Live' : 'Synced') : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 1.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                    UTF-8
+                  </span>
+                  <span>Spaces: 2</span>
+                  <span>LF</span>
+                </div>
+              </div>
             </div>
 
             {/* Right Panel */}
@@ -2669,25 +2669,17 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </div>
           </div>
 
-          {/* Terminal at bottom */}
+          {/* Terminal at bottom (VS Code style) */}
           {showTerminal && (
-            <div className="vscode-terminal-panel">
-              <Terminal
-                projectId={project._id}
-                language={project.language}
-                code={activeFile?.content || ''}
-                fileName={activeFile?.name || ''}
-                fileLanguage={activeFile?.language || ''}
-              />
-            </div>
+            <Terminal
+</div>
+              projectId={project._id}
+              language={project.language}
+              code={activeFile?.content || ''}
+              fileName={activeFile?.name || ''}
+              fileLanguage={activeFile?.language || ''}
+            />
           )}
-        </main>
-
-        {/* Status Bar */}
-        <div className="vscode-status-bar">
-          <span className="vscode-status-item">UTF-8</span>
-          <span className="vscode-status-item">{activeFile?.language || 'Plain Text'}</span>
-          <span className="vscode-status-right">{statistics.line}:{statistics.column}</span>
         </div>
       </div>
     </div>
