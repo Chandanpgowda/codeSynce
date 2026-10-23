@@ -2033,7 +2033,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   return (
     <div className="h-screen flex flex-col" style={{ background: bgColor, color: textColor }}>
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b" style={{ background: panelBg, borderColor }}>
+      <div className="flex items-center justify-between px-4 h-12 shrink-0 border-b" style={{ background: panelBg, borderColor }}>
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/home')}
@@ -2052,7 +2052,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </div>
             <span className="font-semibold text-sm">{project.name}</span>
             {isOwner && (
-              <button type="button" onClick={() => setShowShareProject(true)} className="px-2 py-1 rounded text-xs hover:bg-white/10" title="Share project">Share</button>
+              <button type="button" onClick={() => setShowShareProject(true)} className="px-3 py-2 rounded text-sm hover:bg-white/10" title="Share project">Share</button>
             )}
             {isOwner && (
               <button
@@ -2078,7 +2078,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           {isOwner && (!project.status || project.status === 'draft') && (
             <button
               onClick={submitForEvaluation}
-              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 rounded text-sm font-medium transition-colors"
               style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
               title="Submit project for evaluation"
             >
@@ -2101,7 +2101,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           {/* Command Palette button */}
           <button
             onClick={() => setCommandPaletteOpen(true)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded text-sm transition-colors"
             style={{ background: '#4d4d4d22', color: textColor }}
             title="Command Palette (Ctrl+Shift+P)"
           >
@@ -2114,7 +2114,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           {/* Terminal toggle */}
           <button
             onClick={() => setShowTerminal(!showTerminal)}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded text-sm transition-colors ${
               showTerminal ? 'text-blue-400' : ''
             }`}
             style={{ background: '#4d4d4d22', color: showTerminal ? '#4da3ff' : textColor }}
@@ -2183,7 +2183,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           {isOwner && (
             <button
               onClick={() => setShowRequests(!showRequests)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+              className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
                 showRequests
                   ? 'text-yellow-300 bg-yellow-500/20'
                   : project.pendingRequests.length > 0
@@ -2281,8 +2281,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
               <button type="button" onClick={() => setProjectVisibilityDraft((value) => !value)} className={`relative w-10 h-5 rounded-full ${projectVisibilityDraft ? 'bg-primary-600' : 'bg-gray-600'}`} aria-label="Toggle project visibility"><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${projectVisibilityDraft ? 'translate-x-5' : 'translate-x-1'}`} /></button>
             </div>
             <div className="mt-4 border border-white/10 rounded p-3">
-              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Secure invite link</p><p className="text-xs opacity-60">Expires seven days after creation.</p></div><button type="button" onClick={handleGenerateInvite} className="px-2 py-1 text-xs rounded bg-primary-600 hover:bg-primary-700">Generate</button></div>
-              {inviteLink && <div className="flex gap-2 mt-2"><input readOnly value={inviteLink} className="input-field text-xs flex-1" /><button type="button" onClick={() => navigator.clipboard.writeText(inviteLink)} className="px-2 py-1 text-xs rounded hover:bg-white/10">Copy</button></div>}
+              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Secure invite link</p><p className="text-xs opacity-60">Expires seven days after creation.</p></div><button type="button" onClick={handleGenerateInvite} className="px-3 py-2 text-sm rounded bg-primary-600 hover:bg-primary-700">Generate</button></div>
+              {inviteLink && <div className="flex gap-2 mt-2"><input readOnly value={inviteLink} className="input-field text-xs flex-1" /><button type="button" onClick={() => navigator.clipboard.writeText(inviteLink)} className="px-3 py-2 text-sm rounded hover:bg-white/10">Copy</button></div>}
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button type="button" onClick={() => setShowProjectSettings(false)} className="px-3 py-1.5 text-sm rounded hover:bg-white/10">Cancel</button>
@@ -2359,8 +2359,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     color: isActive ? textColor : '#8b949e',
                   }}
                 >
-                  <span className="text-xs">{getFileIcon(tab.file)}</span>
-                  <span className="text-[13px]">{tab.file.name}</span>
+                      <span className="text-sm">{getFileIcon(tab.file)}</span>
+                      <span className="text-sm">{tab.file.name}</span>
                   <span className="relative">
                     {tab.isDirty ? (
                       <span
@@ -2391,7 +2391,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
           {/* Breadcrumbs */}
           {showBreadcrumbs && activeFile && (
-            <div className="flex items-center gap-0.5 px-4 py-1 border-b text-xs overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
+            <div className="flex items-center gap-0.5 px-4 py-2 border-b text-sm overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
               {breadcrumbs.map((crumb, i) => (
                 <span key={crumb.path} className="flex items-center gap-0.5">
                   <button
@@ -2513,8 +2513,8 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             })()}
           </div>
 
-          {/* Editor Status Bar */}
-          <div className="flex items-center justify-between px-3 py-[1px] text-[11px] shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
+              {/* Editor Status Bar */}
+              <div className="flex items-center justify-between px-3 py-2 text-sm shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2592,7 +2592,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           <div className="flex border-b shrink-0" style={{ borderColor }}>
             <button
               onClick={() => setActivePanel('chat')}
-              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                  className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${
                 activePanel === 'chat'
                   ? 'text-blue-400 border-blue-500'
                   : 'opacity-60 hover:opacity-100 border-transparent'
@@ -2602,7 +2602,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </button>
             <button
               onClick={() => setActivePanel('ai')}
-              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                  className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${
                 activePanel === 'ai'
                   ? 'text-blue-400 border-blue-500'
                   : 'opacity-60 hover:opacity-100 border-transparent'
@@ -2612,7 +2612,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             </button>
             <button
               onClick={() => setActivePanel('members')}
-              className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
+                  className={`flex-1 py-3 text-sm font-medium transition-colors border-b-2 ${
                 activePanel === 'members'
                   ? 'text-blue-400 border-blue-500'
                   : 'opacity-60 hover:opacity-100 border-transparent'
