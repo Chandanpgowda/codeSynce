@@ -1,0 +1,269 @@
+/* ============================================================
+   VS Code Dark Theme — Editor Page Layout
+   ============================================================ */
+
+:root {
+  /* VS Code Dark core colors */
+  --vscode-bg: #1e1e1e;           /* Editor background */
+  --vscode-text: #cccccc;         /* Primary text */
+  --vscode-tab-bg: #2d2d2d;       /* Tabs header bar */
+  --vscode-side-bg: #252526;      /* Side Bar / Explorer */
+  --vscode-activity-bg: #333333;  /* Activity Bar (far left) */
+  --vscode-border: #3c3c3c;       /* Panel separators / borders */
+  --vscode-status-bg: #007acc;    /* Bottom status bar */
+  --vscode-status-border: #005a9e;
+
+  /* Derived / supporting colors (dark) */
+  --vscode-tab-inactive-bg: #1e1e1e;
+  --vscode-tab-border: #333333;
+  --vscode-panel-bg: #252526;
+  --vscode-input-bg: #3c3c3c;
+  --vscode-editor-fg: #d4d4d4;
+  --vscode-hover-bg: #3e3e3e;
+  --vscode-dirty-dot: #e5c07b;
+}
+
+/* ============ Root app shell ============ */
+.vscode-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--vscode-bg);
+  color: var(--vscode-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ============ Activity Bar (far left, 48px) ============ */
+.vscode-activity-bar {
+  width: 48px;
+  background: var(--vscode-activity-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  gap: 8px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--vscode-border);
+  z-index: 10;
+}
+
+.vscode-activity-item {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--vscode-text);
+  border-right: 3px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.vscode-activity-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vscode-activity-item.active {
+  background: var(--vscode-tab-bg);
+  border-right-color: var(--vscode-status-bg);
+}
+
+.vscode-activity-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ============ Sidebar Explorer (250px) ============ */
+.vscode-sidebar {
+  width: 250px;
+  background: var(--vscode-side-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--vscode-border);
+  overflow: hidden;
+}
+
+.vscode-sidebar-header {
+  height: 32px;
+  background: var(--vscode-side-bg);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--vscode-text);
+  border-bottom: 1px solid var(--vscode-border);
+  flex-shrink: 0;
+}
+
+.vscode-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============ Main editor panel ============ */
+.vscode-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--vscode-bg);
+  overflow: hidden;
+}
+
+/* ============ Tabs bar ============ */
+.vscode-tabs {
+  height: 32px;
+  background: var(--vscode-tab-bg);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vscode-tabs-empty {
+  padding: 0 12px;
+  font-size: 12px;
+  opacity: 0.5;
+  color: var(--vscode-text);
+}
+
+/* ============ Editor area ============ */
+.vscode-editor-area {
+  flex: 1;
+  min-height: 0;
+  background: var(--vscode-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vscode-monaco-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--vscode-bg);
+}
+
+/* Ensure Monaco fills its wrapper */
+.vscode-monaco-wrap .monaco-editor,
+.vscode-monaco-wrap .monaco-editor .margin,
+.vscode-monaco-wrap .monaco-editor .view-lines {
+  height: 100% !important;
+}
+
+/* ============ Terminal panel ============ */
+.vscode-terminal-panel {
+  height: 180px;
+  border-top: 1px solid var(--vscode-border);
+  background: var(--vscode-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* ============ Status bar (absolute bottom, 22px) ============ */
+.vscode-status-bar {
+  height: 22px;
+  background: var(--vscode-status-bg);
+  color: #ffffff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--vscode-status-border);
+}
+
+.vscode-status-item {
+  margin-right: 16px;
+}
+
+.vscode-status-item:last-child {
+  margin-right: 0;
+}
+
+.vscode-status-right {
+  margin-left: auto;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+/* ============ Top bar styling ============ */
+.vscode-topbar {
+  height: 32px;
+  background: var(--vscode-panel-bg);
+  border-bottom: 1px solid var(--vscode-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+/* ============ Breadcrumbs styling ============ */
+.vscode-breadcrumbs {
+  height: 30px;
+  background: var(--vscode-tab-inactive-bg);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vscode-breadcrumbs .crumb {
+  color: #858585;
+  cursor: pointer;
+}
+
+.vscode-breadcrumbs .crumb:hover {
+  color: var(--vscode-text);
+}
+
+.vscode-breadcrumbs .crumb.is-active {
+  color: var(--vscode-text);
+}
+
+.vscode-breadcrumbs .sep {
+  color: #858585;
+  padding: 0 6px;
+}
+
+/* ============ Tab item refinements ============ */
+.vscode-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 32px;
+  cursor: pointer;
+  border-right: 1px solid transparent;
+  transition: background 0.15s;
+}
+
+.vscode-tab-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vscode-tab-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 2px solid var(--vscode-status-bg);
+}
+
+.vscode-tab-item.dirty::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--vscode-dirty-dot);
+  border-radius: 50%;
+  margin-left: 6px;
+}
