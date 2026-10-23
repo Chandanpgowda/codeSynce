@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/db';
 import User from '@/models/User';
 import OTP from '@/models/OTP';
+import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { identifier, code, type, name, mode } = body;
+    const { identifier, code, type, name, mode, password } = body;
 
     if (!identifier || !code || !type) {
       return NextResponse.json(
@@ -47,14 +48,19 @@ export async function POST(request: NextRequest) {
       }
 
       // Create new user
+      const hashedPassword = password ? await bcrypt.hash(password, 12) : undefined;
       user = await User.create({
-        name: name || 'CodeSynce User',
+        name: name || 'CodeSync User',
         email: type === 'email' ? identifier.toLowerCase() : undefined,
         phone: type === 'phone' ? identifier : undefined,
         provider: type,
+        password: hashedPassword,
         emailVerified: type === 'email',
         phoneVerified: type === 'phone',
         skills: [],
+        // Any self-signed-up user is a Project Builder. The evaluator role is
+        // granted separately via /api/auth/roles/evaluator (invite key or grant).
+        role: 'builder',
       });
     } else {
       // Sign in - find existing user

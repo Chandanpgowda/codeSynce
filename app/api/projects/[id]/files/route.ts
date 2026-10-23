@@ -3,6 +3,7 @@ import dbConnect from '@/lib/db';
 import Project from '@/models/Project';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { recordActivity } from '@/lib/activities';
 
 // Helper functions for file tree manipulation
 function getLanguageFromName(name: string): string {
@@ -91,12 +92,17 @@ export async function POST(
     // Check if user is a member
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
+    }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
     }
 
     const body = await request.json();
-    const { type, name, parentPath } = body;
+    const { type, name, parentPath, content } = body;
 
     if (!type || !name || (type !== 'file' && type !== 'folder')) {
       return NextResponse.json(
@@ -128,13 +134,23 @@ export async function POST(
       path: fullPath,
       type,
       ...(type === 'file'
-        ? { content: '', language: getLanguageFromName(name) }
+        ? { content: content !== undefined ? content : '', language: getLanguageFromName(name) }
         : { children: [] }),
     };
 
     parent!.push(newItem);
     project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
+
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: type === 'file' ? 'file_created' : 'other',
+      message: `${type === 'file' ? 'Created file' : 'Created folder'} "${fullPath}"`,
+      file: fullPath,
+    });
 
     return NextResponse.json({ item: newItem }, { status: 201 });
   } catch (error) {
@@ -163,8 +179,13 @@ export async function PUT(
 
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
+    }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -183,11 +204,18 @@ export async function PUT(
     }
 
     file.content = content;
+    project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
 
-    // Mark as modified
-    project.markModified('files');
-    await project.save();
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'file_modified',
+      message: `Modified file "${path}"`,
+      file: path,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -216,8 +244,13 @@ export async function DELETE(
 
     const isMember = project.members.some((m: any) => m.toString() === session.user.id) ||
       project.owner.toString() === session.user.id;
-    if (!isMember) {
-      return NextResponse.json({ error: 'Not a project member' }, { status: 403 });
+    const canEdit = project.owner.toString() === session.user.id || project.memberPermissions?.get(session.user.id) !== 'viewer';
+    if (!isMember || !canEdit) {
+      return NextResponse.json({ error: 'Editor permission is required to modify files' }, { status: 403 });
+    }
+    // Evidence preservation: files are locked once the project is submitted for evaluation.
+    if (project.status && project.status !== 'draft') {
+      return NextResponse.json({ error: 'Project is submitted for evaluation and is read-only' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -236,7 +269,17 @@ export async function DELETE(
     }
 
     project.markModified('files');
+    project.lastEditedAt = new Date();
+    project.lastEditedBy = session.user.id as any;
     await project.save();
+
+    await recordActivity({
+      project: project._id.toString(),
+      user: session.user.id,
+      activityType: 'file_deleted',
+      message: `Deleted "${path}"`,
+      file: path,
+    });
 
     return NextResponse.json({ success: true, message: 'Deleted' });
   } catch (error) {

@@ -20,12 +20,12 @@ export async function sendEmailOTP(email: string, code: string): Promise<void> {
   });
 
   await transporter.sendMail({
-    from: `"CodeSynce" <${process.env.EMAIL_USER}>`,
+    from: `"CodeSync" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: 'Your CodeSynce Verification Code',
+    subject: 'Your CodeSync Verification Code',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #0d1117; border-radius: 10px; color: #ffffff;">
-        <h1 style="color: #3b82f6; text-align: center;">CodeSynce</h1>
+        <h1 style="color: #3b82f6; text-align: center;">CodeSync</h1>
         <p style="text-align: center; font-size: 16px;">Your verification code is:</p>
         <div style="text-align: center; font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #3b82f6; padding: 20px; background-color: #161b22; border-radius: 8px; margin: 20px 0;">
           ${code}
@@ -45,7 +45,7 @@ export async function sendPhoneOTP(phone: string, code: string): Promise<void> {
   );
 
   await twilio.messages.create({
-    body: `Your CodeSynce verification code is: ${code}. It expires in 10 minutes.`,
+    body: `Your CodeSync verification code is: ${code}. It expires in 10 minutes.`,
     from: process.env.TWILIO_PHONE_NUMBER,
     to: phone,
   });
@@ -101,4 +101,38 @@ export async function verifyOTP(identifier: string, code: string): Promise<boole
   await otp.save();
 
   return true;
+}
+
+// Send password reset email
+export async function sendPasswordResetEmail(email: string, token: string): Promise<void> {
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: Number(process.env.EMAIL_PORT),
+    secure: false,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  const resetUrl = `${process.env.NEXTAUTH_URL}/auth/reset-password?token=${token}`;
+
+  await transporter.sendMail({
+    from: `"CodeSync" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: 'CodeSync Password Reset',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background-color: #0d1117; border-radius: 10px; color: #ffffff;">
+        <h1 style="color: #3b82f6; text-align: center;">CodeSync</h1>
+        <p style="text-align: center; font-size: 16px;">You requested to reset your password.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
+            Reset Password
+          </a>
+        </div>
+        <p style="text-align: center; color: #8b949e; font-size: 14px;">This link will expire in 1 hour.</p>
+        <p style="text-align: center; color: #8b949e; font-size: 12px;">If you didn't request this, please ignore this email.</p>
+      </div>
+    `,
+  });
 }

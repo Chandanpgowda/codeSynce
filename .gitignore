@@ -40,3 +40,6 @@ socket-server*.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# logs
+*.log

@@ -144,22 +144,34 @@ function getWandboxCompiler(fileName: string, language: string): string | null {
 }
 
 // Execute code using Wandbox API (works on Vercel serverless)
-async function executeWithWandbox(code: string, fileName: string, language: string): Promise<string[]> {
+interface ExecutionResult {
+  output: string[];
+  errors: string[];
+  status: 'completed' | 'failed';
+}
+
+async function executeWithWandbox(
+  code: string,
+  fileName: string,
+  language: string,
+  stdin: string,
+  signal?: AbortSignal
+): Promise<ExecutionResult> {
   const compiler = getWandboxCompiler(fileName, language);
 
   // HTML - just show a message
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
   if (ext === 'html' || language.toLowerCase() === 'html') {
-    return [`Open this file in a browser to view: ${fileName}`];
+    return { output: [`Open this file in a browser to view: ${fileName}`], errors: [], status: 'completed' };
   }
 
   // SQL - just show a message
   if (ext === 'sql' || language.toLowerCase() === 'sql') {
-    return [`SQL query ready to execute on your database.`];
+    return { output: [`SQL query ready to execute on your database.`], errors: [], status: 'completed' };
   }
 
   if (!compiler) {
-    return [`Unsupported language for auto-run: ${language}. Use the terminal manually.`];
+    return { output: [], errors: [`Unsupported language for auto-run: ${language}.`], status: 'failed' };
   }
 
   try {
@@ -168,21 +180,23 @@ async function executeWithWandbox(code: string, fileName: string, language: stri
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
       body: JSON.stringify({
         code: code,
         compiler: compiler,
         options: '',
-        stdin: '',
+        stdin,
       }),
     });
 
     if (!response.ok) {
-      return [`Error: Code execution service returned ${response.status}`];
+      return { output: [], errors: [`Code execution service returned ${response.status}`], status: 'failed' };
     }
 
     const result = await response.json();
 
     const output: string[] = [];
+    const errors: string[] = [];
 
     // Compiler output (for compiled languages like Java, C, C++)
     if (result.compiler_output) {
@@ -196,7 +210,7 @@ async function executeWithWandbox(code: string, fileName: string, language: stri
     if (result.compiler_error) {
       const compilerError = result.compiler_error.trim();
       if (compilerError) {
-        output.push(...compilerError.split('\n').filter((line: string) => line.length > 0));
+        errors.push(...compilerError.split('\n').filter((line: string) => line.length > 0));
       }
     }
 
@@ -212,17 +226,13 @@ async function executeWithWandbox(code: string, fileName: string, language: stri
     if (result.program_error) {
       const programError = result.program_error.trim();
       if (programError) {
-        output.push(...programError.split('\n').filter((line: string) => line.length > 0));
+        errors.push(...programError.split('\n').filter((line: string) => line.length > 0));
       }
     }
 
-    if (output.length === 0) {
-      output.push('');
-    }
-
-    return output;
+    return { output, errors, status: errors.length > 0 ? 'failed' : 'completed' };
   } catch (error) {
-    return [`Error: Failed to execute code. The code execution service is unavailable.`];
+    return { output: [], errors: ['Failed to execute code. The code execution service is unavailable.'], status: 'failed' };
   }
 }
 
@@ -303,9 +313,16 @@ export async function POST(
       fs.writeFileSync(filePath, code);
 
       // Execute using Wandbox API (works on Vercel serverless)
-      const output = await executeWithWandbox(code, filename, inputFileLanguage || project.language);
+      const stdin = typeof body.stdin === 'string' ? body.stdin.slice(0, 10000) : '';
+      const execution = await executeWithWandbox(
+        code,
+        filename,
+        inputFileLanguage || project.language,
+        stdin,
+        request.signal
+      );
 
-      return NextResponse.json({ output, cwd: cwd.replace(/\\/g, '/') });
+      return NextResponse.json({ ...execution, cwd: cwd.replace(/\\/g, '/') });
     }
 
     // For regular commands, command is required

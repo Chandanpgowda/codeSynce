@@ -1,5 +1,7 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
+export type UserRole = 'builder' | 'evaluator';
+
 export interface IUser {
   name: string;
   email?: string;
@@ -12,6 +14,10 @@ export interface IUser {
   phoneVerified?: boolean;
   skills: string[];
   bio?: string;
+  /** Server-controlled role. NEVER trusted from client input. */
+  role: UserRole;
+  /** Controlled evaluator on-boarding: a user must be explicitly granted
+      the evaluator role (e.g. via an invite key or by an existing evaluator). */
   projectsOwned: mongoose.Types.ObjectId[];
   projectsJoined: mongoose.Types.ObjectId[];
   createdAt: Date;
@@ -31,6 +37,7 @@ const UserSchema = new Schema<IUser>(
     phoneVerified: { type: Boolean, default: false },
     skills: [{ type: String }],
     bio: { type: String },
+    role: { type: String, enum: ['builder', 'evaluator'], default: 'builder', required: true },
     projectsOwned: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
     projectsJoined: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
   },

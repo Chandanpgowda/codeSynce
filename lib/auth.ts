@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import dbConnect from './db';
 import User from '@/models/User';
+import type { UserRole } from '@/models/User';
 import OTP from '@/models/OTP';
 
 export const authOptions: NextAuthOptions = {
@@ -17,13 +18,45 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         identifier: { label: 'Email or Phone', type: 'text' },
         code: { label: 'OTP Code', type: 'text' },
+        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.identifier || !credentials?.code) {
+        if (!credentials?.identifier) {
           return null;
         }
 
         await dbConnect();
+
+        // If password is provided, authenticate with password
+        if (credentials.password) {
+          const user = await User.findOne({
+            $or: [
+              { email: credentials.identifier.toLowerCase() },
+              { phone: credentials.identifier },
+            ],
+          }).select('+password');
+
+          if (!user || !user.password) {
+            return null;
+          }
+
+          const isValid = await bcrypt.compare(credentials.password, user.password);
+          if (!isValid) {
+            return null;
+          }
+
+          return {
+            id: user._id.toString(),
+            name: user.name,
+            email: user.email,
+            image: user.image,
+          };
+        }
+
+        // Otherwise, fall back to OTP verification
+        if (!credentials?.code) {
+          return null;
+        }
 
         // Verify OTP code
         const otp = await OTP.findOne({
@@ -64,8 +97,18 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, user, account }) {
+      // When a user signs in, load the authoritative role from the database.
+      // Never take a role from the client.
       if (user) {
         token.id = user.id;
+        try {
+          await dbConnect();
+          const dbUser = (await User.findById(user.id).select('role').lean()) as any;
+          token.role = (dbUser?.role as UserRole) || 'builder';
+        } catch (err) {
+          console.error('Failed to load role during JWT callback', err);
+          token.role = 'builder';
+        }
       }
       if (account?.provider === 'google') {
         token.provider = 'google';
@@ -75,6 +118,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
       }
       return session;
     },
@@ -93,6 +137,9 @@ export const authOptions: NextAuthOptions = {
               provider: 'google',
               emailVerified: true,
               skills: [],
+              // Google signups are Project Builders by default. The evaluator
+              // role is granted separately (invite key or existing evaluator).
+              role: 'builder',
             });
             user.id = newUser._id.toString();
           } else {

@@ -1,0 +1,348 @@
+/* ============================================================
+   VS Code Dark Theme — Editor Page Layout
+   ============================================================ */
+
+:root {
+  /* VS Code Dark core colors */
+  --vscode-bg-main: #1e1e1e;          /* Main editor background */
+  --vscode-text-main: #cccccc;        /* Default light gray text */
+   --vscode-text-muted: #858585;       /* Subtitles / hidden text */
+  --vscode-bg-tabs: #2d2d2d;          /* Editor tabs wrapper */
+  --vscode-bg-sidebar: #252526;       /* Sidebar/Explorer background */
+  --vscode-bg-activitybar: #333333;   /* Far left activity menu */
+  --vscode-border-color: #3c3c3c;     /* UI structural separation line */
+  --vscode-bg-statusbar: #007acc;     /* Blue bottom status bar */
+  --vscode-bg-terminal: #1e1e1e;      /* Integrated terminal floor */
+
+  /* Derived / supporting colors (dark) */
+  --vscode-bg-terminal: #1e1e1e;      /* Integrated terminal floor */
+}
+
+/* ==========================================================================
+   Structural Flex Grid (Prevents browser scrollbars, creates desktop app shell)
+   ========================================================================== */
+* {
+   box-sizing: border-box;
+   margin: 0;
+   padding: 0;
+}
+
+body, html {
+   height: 100%;
+   width: 100%;
+   overflow: hidden; /* Prevents whole-page scrolling */
+   font-family: var(--vscode-font);
+   background-color: var(--vscode-bg-main);
+   color: var(--vscode-text-main);
+   font-size: 13px;
+}
+
+/* Outer wrapper holding the main content windows (excluding status bar) */
+.vscode-app-container {
+   display: flex;
+   height: calc(100vh - 22px); /* Leaves exact space for 22px status bar */
+   width: 100vw;
+}
+
+/* ==========================================================================
+   1. Activity Bar Layout (Far Left - 48px Fixed Width)
+   ========================================================================== */
+.vscode-activity-bar {
+   width: 48px;
+   height: 100%;
+   background-color: var(--vscode-bg-activitybar);
+   display: flex;
+   flex-direction: column;
+   justify-content: space-between; /* Pushes settings gear icon to the bottom */
+   align-items: center;
+   border-right: 1px solid var(--vscode-border-color);
+}
+
+.vscode-activity-menu {
+   display: flex;
+   flex-direction: column;
+   width: 100%;
+}
+
+.vscode-activity-item {
+   height: 48px;
+   width: 100%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   color: var(--vscode-text-muted);
+   font-size: 20px;
+   position: relative;
+}
+
+.vscode-activity-item:hover {
+   color: #ffffff;
+}
+
+/* Visual active vertical line indicator on the left side of the icon */
+.vscode-activity-item.active {
+   color: #ffffff;
+}
+.vscode-activity-item.active::before {
+   content: '';
+   position: absolute;
+   left: 0;
+   top: 0;
+   height: 100%;
+   width: 2px;
+   background-color: #ffffff;
+}
+:root {
+  --vscode-tab-border: #333333;
+  --vscode-panel-bg: #252526;
+  --vscode-input-bg: #3c3c3c;
+  --vscode-editor-fg: #d4d4d4;
+  --vscode-hover-bg: #3e3e3e;
+  --vscode-dirty-dot: #e5c07b;
+}
+
+/* ============ Root app shell ============ */
+.vscode-root {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--vscode-bg);
+  color: var(--vscode-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ============ Activity Bar (far left, 48px) ============ */
+.vscode-activity-bar {
+  width: 48px;
+  background: var(--vscode-activity-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  gap: 8px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--vscode-border);
+  z-index: 10;
+}
+
+.vscode-activity-item {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--vscode-text);
+  border-right: 3px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.vscode-activity-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vscode-activity-item.active {
+  background: var(--vscode-tab-bg);
+  border-right-color: var(--vscode-status-bg);
+}
+
+.vscode-activity-item svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ============ Sidebar Explorer (250px) ============ */
+.vscode-sidebar {
+  width: 250px;
+  background: var(--vscode-side-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-right: 1px solid var(--vscode-border);
+  overflow: hidden;
+}
+
+.vscode-sidebar-header {
+  height: 32px;
+  background: var(--vscode-side-bg);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--vscode-text);
+  border-bottom: 1px solid var(--vscode-border);
+  flex-shrink: 0;
+}
+
+.vscode-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============ Main editor panel ============ */
+.vscode-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--vscode-bg);
+  overflow: hidden;
+}
+
+/* ============ Tabs bar ============ */
+.vscode-tabs {
+  height: 32px;
+  background: var(--vscode-tab-bg);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vscode-tabs-empty {
+  padding: 0 12px;
+  font-size: 12px;
+  opacity: 0.5;
+  color: var(--vscode-text);
+}
+
+/* ============ Editor area ============ */
+.vscode-editor-area {
+  flex: 1;
+  min-height: 0;
+  background: var(--vscode-bg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.vscode-monaco-wrap {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--vscode-bg);
+}
+
+/* Ensure Monaco fills its wrapper */
+.vscode-monaco-wrap .monaco-editor,
+.vscode-monaco-wrap .monaco-editor .margin,
+.vscode-monaco-wrap .monaco-editor .view-lines {
+  height: 100% !important;
+}
+
+/* ============ Terminal panel ============ */
+.vscode-terminal-panel {
+  height: 250px;
+  border-top: 1px solid var(--vscode-border);
+  background: var(--vscode-bg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* ============ Status bar (absolute bottom, 22px) ============ */
+.vscode-status-bar {
+  height: 22px;
+  background: var(--vscode-status-bg);
+  color: #ffffff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--vscode-status-border);
+}
+
+.vscode-status-item {
+  margin-right: 16px;
+}
+
+.vscode-status-item:last-child {
+  margin-right: 0;
+}
+
+.vscode-status-right {
+  margin-left: auto;
+  padding: 0 4px;
+  font-weight: 500;
+}
+
+/* ============ Top bar styling ============ */
+.vscode-topbar {
+  height: 32px;
+  background: var(--vscode-panel-bg);
+  border-bottom: 1px solid var(--vscode-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+/* ============ Breadcrumbs styling ============ */
+.vscode-breadcrumbs {
+  height: 30px;
+  background: var(--vscode-tab-inactive-bg);
+  border-bottom: 1px solid var(--vscode-tab-border);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.vscode-breadcrumbs .crumb {
+  color: #858585;
+  cursor: pointer;
+}
+
+.vscode-breadcrumbs .crumb:hover {
+  color: var(--vscode-text);
+}
+
+.vscode-breadcrumbs .crumb.is-active {
+  color: var(--vscode-text);
+}
+
+.vscode-breadcrumbs .sep {
+  color: #858585;
+  padding: 0 6px;
+}
+
+/* ============ Tab item refinements ============ */
+.vscode-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 32px;
+  cursor: pointer;
+  border-right: 1px solid transparent;
+  transition: background 0.15s;
+}
+
+.vscode-tab-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vscode-tab-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 2px solid var(--vscode-status-bg);
+}
+
+.vscode-tab-item.dirty::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--vscode-dirty-dot);
+  border-radius: 50%;
+  margin-left: 6px;
+}

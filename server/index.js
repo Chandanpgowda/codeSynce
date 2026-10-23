@@ -1,4 +1,9 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
+// Load .env.local only if present (local dev). On Render, use environment variables set in dashboard.
+try {
+  require('dotenv').config({ path: require('path').resolve(__dirname, '../.env.local') });
+} catch (_) {
+  // .env.local not present - relying on platform environment variables
+}
 
 const { Server } = require('socket.io');
 const http = require('http');
@@ -10,16 +15,18 @@ const server = http.createServer((req, res) => {
   res.end('CodeSynce Socket Server');
 });
 
+const socketCorsOrigin = process.env.SOCKET_CORS_ORIGIN || '*';
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? process.env.SOCKET_CORS_ORIGIN || 'http://localhost:3000'
-      : 'http://localhost:3000',
+    origin: socketCorsOrigin,
     methods: ['GET', 'POST'],
-    credentials: true,
+    ...(socketCorsOrigin !== '*' && { credentials: true }),
   },
   maxHttpBufferSize: 1e6, // 1MB limit
   transports: ['websocket', 'polling'],
+  // Don't let engine.io destroy non-Socket.IO WebSocket upgrades (the Yjs
+  // /collab connections share this HTTP server).
+  destroyUpgrade: false,
 });
 
 // MongoDB connection
@@ -47,13 +54,56 @@ const ProjectSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     message: String,
     timestamp: Date,
+    replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    codeSnippetLanguage: String,
+    codeSnippetCode: String,
+    mentions: [String],
+    fileReferenceProject: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
+    fileReferencePath: String,
+    fileReferenceLine: Number,
   }],
 }, { timestamps: true });
 
 const Project = mongoose.models.Project || mongoose.model('Project', ProjectSchema);
 
-// Store active users per project
+// Store active users per project: projectId -> Map<socketId, { user, connectedAt, typingSince, currentFile }>
 const projectUsers = new Map();
+
+// Store typing timeouts: projectId -> Map<userId, timeout>
+const typingTimeouts = new Map();
+
+// Store chat typing timeouts (separate from code editor typing): projectId -> Map<userId, timeout>
+const chatTypingTimeouts = new Map();
+
+// Generate a consistent color for a user based on their ID
+function getUserColor(userId) {
+  const colors = [
+    '#f94144', '#f3722c', '#f8961e', '#f9c74f',
+    '#90be6d', '#43aa8b', '#4d908e', '#577590',
+    '#277da1', '#e63946', '#f4a261', '#2a9d8f',
+    '#e76f51', '#8ecae6', '#ffb703', '#fb8500',
+    '#06d6a0', '#118ab2', '#ef476f', '#8338ec',
+    '#3a86ff', '#ff006e', '#7b2cbf', '#00bbf9',
+  ];
+  let hash = 0;
+  const str = String(userId || '');
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function getOnlineUsers(projectId) {
+  if (!projectUsers.has(projectId)) return [];
+  return Array.from(projectUsers.get(projectId).values()).map((data) => ({
+    ...data.user,
+    connectedAt: data.connectedAt,
+    typing: data.typing || false,
+    currentFile: data.currentFile || null,
+    color: getUserColor(data.user?._id || data.user?.id),
+    socketId: data.socketId,
+  }));
+}
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -66,12 +116,34 @@ io.on('connection', (socket) => {
     if (!projectUsers.has(projectId)) {
       projectUsers.set(projectId, new Map());
     }
-    projectUsers.get(projectId).set(socket.id, user);
+
+    projectUsers.get(projectId).set(socket.id, {
+      user,
+      connectedAt: new Date().toISOString(),
+      typing: false,
+      currentFile: null,
+      socketId: socket.id,
+    });
+
+    // Reset typing timeout if exists
+    const userId = user?._id || user?.id;
+    if (typingTimeouts.has(projectId)) {
+      const userTimeout = typingTimeouts.get(projectId);
+      if (userTimeout.has(userId)) {
+        clearTimeout(userTimeout.get(userId));
+        userTimeout.delete(userId);
+      }
+    }
+
+    // Send current online users to the newly joined user
+    socket.emit('presence-state', {
+      users: getOnlineUsers(projectId),
+    });
 
     // Notify all users in the project
     io.to(`project:${projectId}`).emit('user-joined', {
       user,
-      users: Array.from(projectUsers.get(projectId).values()),
+      users: getOnlineUsers(projectId),
     });
   });
 
@@ -79,9 +151,19 @@ io.on('connection', (socket) => {
     socket.leave(`project:${projectId}`);
     if (projectUsers.has(projectId)) {
       projectUsers.get(projectId).delete(socket.id);
+
+      const userId = socket.data.user?._id || socket.data.user?.id;
+      if (typingTimeouts.has(projectId)) {
+        const userTimeout = typingTimeouts.get(projectId);
+        if (userTimeout.has(userId)) {
+          clearTimeout(userTimeout.get(userId));
+          userTimeout.delete(userId);
+        }
+      }
+
       io.to(`project:${projectId}`).emit('user-left', {
         user: socket.data.user,
-        users: Array.from(projectUsers.get(projectId).values()),
+        users: getOnlineUsers(projectId),
       });
     }
   });
@@ -93,7 +175,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const { projectId, message, user } = data;
+    const { projectId, message, user, replyTo, codeSnippet, mentions, fileReference } = data;
 
     // Validate required fields
     if (!projectId || !message || !user) {
@@ -116,19 +198,37 @@ io.on('connection', (socket) => {
       },
       message: sanitizedMessage,
       timestamp: new Date().toISOString(),
+      replyTo: replyTo || undefined,
+      codeSnippet: codeSnippet || undefined,
+      mentions: mentions || [],
+      fileReference: fileReference || undefined,
     };
 
-    // Broadcast to all users in the project
-    io.to(`project:${projectId}`).emit('new-message', msg);
+    // Broadcast to all OTHER users in the project (sender gets optimistic update)
+    socket.to(`project:${projectId}`).emit('new-message', msg);
+
+    // Browser clients persist through the authenticated Next.js API. Keep this
+    // fallback for older clients while avoiding duplicate records for new ones.
+    if (data.persisted) {
+      return;
+    }
 
     // Persist to MongoDB
     try {
+
       await Project.findByIdAndUpdate(projectId, {
         $push: {
           chatMessages: {
             user: user?._id || user?.id,
             message: sanitizedMessage,
             timestamp: new Date(),
+            replyTo: replyTo || undefined,
+            codeSnippetLanguage: codeSnippet?.language || undefined,
+            codeSnippetCode: codeSnippet?.code || undefined,
+            mentions: mentions || [],
+            fileReferenceProject: fileReference?.projectId || undefined,
+            fileReferencePath: fileReference?.filePath || undefined,
+            fileReferenceLine: fileReference?.lineNumber || undefined,
           },
         },
       });
@@ -144,13 +244,158 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Update current file in presence data
+    if (data.file && projectUsers.has(data.projectId)) {
+      const userData = projectUsers.get(data.projectId).get(socket.id);
+      if (userData) {
+        userData.currentFile = data.file;
+      }
+    }
+
     socket.to(`project:${data.projectId}`).emit('cursor-moved', {
       user: data.user,
       position: data.position,
+      file: data.file,
+      color: getUserColor(data.user?._id || data.user?.id),
     });
   });
 
-  // File changes
+  // Selection changes
+  socket.on('selection-change', (data) => {
+    if (!data || !data.projectId || !data.selection || !data.user) {
+      return;
+    }
+
+    socket.to(`project:${data.projectId}`).emit('selection-updated', {
+      user: data.user,
+      selection: data.selection,
+      file: data.file,
+      color: getUserColor(data.user?._id || data.user?.id),
+    });
+  });
+
+  // Typing indicators
+  socket.on('typing-start', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    // Update presence state
+    if (projectUsers.has(projectId)) {
+      const userData = projectUsers.get(projectId).get(socket.id);
+      if (userData) {
+        userData.typing = true;
+        userData.currentFile = data.file || userData.currentFile;
+      }
+    }
+
+    // Set timeout to auto-clear typing after 3s
+    if (!typingTimeouts.has(projectId)) {
+      typingTimeouts.set(projectId, new Map());
+    }
+    const userTimeouts = typingTimeouts.get(projectId);
+    if (userTimeouts.has(userId)) {
+      clearTimeout(userTimeouts.get(userId));
+    }
+    userTimeouts.set(userId, setTimeout(() => {
+      // Broadcast typing stopped
+      if (projectUsers.has(projectId)) {
+        const ud = projectUsers.get(projectId).get(socket.id);
+        if (ud) ud.typing = false;
+      }
+      io.to(`project:${projectId}`).emit('typing-stopped', {
+        user: data.user,
+        users: getOnlineUsers(projectId),
+      });
+      userTimeouts.delete(userId);
+    }, 3000));
+
+    io.to(`project:${projectId}`).emit('typing-started', {
+      user: data.user,
+      file: data.file,
+      users: getOnlineUsers(projectId),
+    });
+  });
+
+  socket.on('typing-stop', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    // Clear typing state
+    if (projectUsers.has(projectId)) {
+      const userData = projectUsers.get(projectId).get(socket.id);
+      if (userData) {
+        userData.typing = false;
+      }
+    }
+
+    if (typingTimeouts.has(projectId)) {
+      const userTimeouts = typingTimeouts.get(projectId);
+      if (userTimeouts.has(userId)) {
+        clearTimeout(userTimeouts.get(userId));
+        userTimeouts.delete(userId);
+      }
+    }
+
+    io.to(`project:${projectId}`).emit('typing-stopped', {
+      user: data.user,
+      users: getOnlineUsers(projectId),
+    });
+  });
+
+  // Chat typing indicators (separate from code editor typing)
+  socket.on('chat-typing-start', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    // Auto-clear after 2.5s of inactivity
+    if (!chatTypingTimeouts.has(projectId)) {
+      chatTypingTimeouts.set(projectId, new Map());
+    }
+    const userTimeouts = chatTypingTimeouts.get(projectId);
+    if (userTimeouts.has(userId)) {
+      clearTimeout(userTimeouts.get(userId));
+    }
+    userTimeouts.set(userId, setTimeout(() => {
+      io.to(`project:${projectId}`).emit('chat-typing-stopped', { user: data.user });
+      userTimeouts.delete(userId);
+    }, 2500));
+
+    // Broadcast to everyone else in the room
+    socket.to(`project:${projectId}`).emit('chat-typing-started', { user: data.user });
+  });
+
+  socket.on('chat-typing-stop', (data) => {
+    if (!data || !data.projectId || !data.user) {
+      return;
+    }
+
+    const userId = data.user?._id || data.user?.id;
+    const projectId = data.projectId;
+
+    if (chatTypingTimeouts.has(projectId)) {
+      const userTimeouts = chatTypingTimeouts.get(projectId);
+      if (userTimeouts.has(userId)) {
+        clearTimeout(userTimeouts.get(userId));
+        userTimeouts.delete(userId);
+      }
+    }
+
+    socket.to(`project:${projectId}`).emit('chat-typing-stopped', { user: data.user });
+  });
+
+  // File changes (broadcast content)
   socket.on('file-change', (data) => {
     // Validate input
     if (!data || !data.projectId || !data.file || typeof data.content !== 'string') {
@@ -167,58 +412,62 @@ io.on('connection', (socket) => {
       file: data.file,
       content: data.content,
       user: socket.data.user,
+      timestamp: new Date().toISOString(),
     });
   });
 
-  // Add rate limiting for messages
-  const messageRateLimit = new Map();
-
-  socket.on('send-message', async (data) => {
-    if (!data || !data.projectId || !data.user) {
+  // File saved to database
+  socket.on('file-saved', (data) => {
+    if (!data || !data.projectId || !data.file) {
       return;
     }
 
-    const userId = data.user._id || data.user.id;
-    const now = Date.now();
-    const key = `${data.projectId}:${userId}`;
+    io.to(`project:${data.projectId}`).emit('file-saved-broadcast', {
+      file: data.file,
+      user: data.user || socket.data.user,
+      timestamp: new Date().toISOString(),
+    });
+  });
 
-    // Check rate limit (max 10 messages per 5 seconds)
-    if (messageRateLimit.has(key)) {
-    const timestamps = messageRateLimit.get(key);
-    const recentMessages = timestamps.filter((ts) => now - ts < 5000);
-
-      if (recentMessages.length >= 10) {
-        console.error('Rate limit exceeded for user:', userId);
-        return;
-      }
-
-      timestamps.push(now);
-      messageRateLimit.set(key, timestamps);
-    } else {
-      messageRateLimit.set(key, [now]);
+  // File opened
+  socket.on('file-opened', (data) => {
+    if (!data || !data.projectId || !data.file) {
+      return;
     }
 
-    // Clean up old entries
-    setTimeout(() => {
-      if (messageRateLimit.has(key)) {
-        const timestamps = messageRateLimit.get(key);
-        const filtered = timestamps.filter((ts) => now - ts < 5000);
-        if (filtered.length === 0) {
-          messageRateLimit.delete(key);
-        } else {
-          messageRateLimit.set(key, filtered);
-        }
+    if (projectUsers.has(data.projectId)) {
+      const userData = projectUsers.get(data.projectId).get(socket.id);
+      if (userData) {
+        userData.currentFile = data.file;
       }
-    }, 6000);
+    }
+
+    socket.to(`project:${data.projectId}`).emit('file-opened-broadcast', {
+      user: data.user || socket.data.user,
+      file: data.file,
+      users: getOnlineUsers(data.projectId),
+    });
   });
 
   socket.on('disconnect', () => {
     const { projectId, user } = socket.data;
+
     if (projectId && projectUsers.has(projectId)) {
       projectUsers.get(projectId).delete(socket.id);
+
+      // Clear typing state
+      const userId = user?._id || user?.id;
+      if (typingTimeouts.has(projectId)) {
+        const userTimeouts = typingTimeouts.get(projectId);
+        if (userTimeouts.has(userId)) {
+          clearTimeout(userTimeouts.get(userId));
+          userTimeouts.delete(userId);
+        }
+      }
+
       io.to(`project:${projectId}`).emit('user-left', {
         user,
-        users: Array.from(projectUsers.get(projectId).values()),
+        users: getOnlineUsers(projectId),
       });
     }
     console.log('Client disconnected:', socket.id);
@@ -230,11 +479,40 @@ io.on('connection', (socket) => {
   });
 });
 
-// Yjs WebSocket provider for collaborative editing
-const wss = new (require('ws').Server)({ server, path: '/collab' });
+// Yjs WebSocket provider for collaborative editing.
+// y-websocket v2 clients connect to `<serverUrl>/<roomname>`, i.e.
+// `/collab/<projectId>`. A plain `new ws.Server({ path: '/collab' })` would do
+// EXACT path matching and reject those requests, silently breaking realtime
+// editing. Instead we use a noServer ws instance plus a manual upgrade handler
+// that accepts any path under /collab and derives the doc name from it.
+const wss = new (require('ws').Server)({ noServer: true });
 
 wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req, { gc: true });
+  // req.url looks like "/collab/<projectId>?..." - extract the room/doc name.
+  let pathname = '';
+  try {
+    pathname = new URL(req.url, 'http://localhost').pathname;
+  } catch (_) {
+    pathname = req.url || '';
+  }
+  const docName = decodeURIComponent(pathname.replace(/^\/collab\//, '').replace(/^\/collab$/, '')).split('?')[0];
+  setupWSConnection(conn, req, { docName: docName || undefined, gc: true });
+});
+
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '';
+  try {
+    pathname = new URL(req.url, 'http://localhost').pathname;
+  } catch (_) {
+    return;
+  }
+  if (pathname === '/collab' || pathname.startsWith('/collab/')) {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, req);
+    });
+  }
+  // Other upgrade paths (e.g. Socket.IO's /socket.io/) are handled by their
+  // own listeners attached to this server.
 });
 
 const PORT = process.env.PORT || 3001;

@@ -1,14 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Editor from '@monaco-editor/react';
 import { io, Socket } from 'socket.io-client';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { MonacoBinding } from 'y-monaco';
 import ChatPanel from '@/components/ChatPanel';
 import AIPanel from '@/components/AIPanel';
+import type { ChatMessage } from '@/components/ChatPanel';
 import FileExplorer from '@/components/FileExplorer';
 import Terminal from '@/components/Terminal';
+import CommandPalette, { CommandItem } from '@/components/CommandPalette';
+import SearchAndReplace from '@/components/SearchAndReplace';
+import CollaborationPanel from '@/components/CollaborationPanel';
+import ShareProjectModal from '@/components/ShareProjectModal';
+import '@/styles/vscode-theme.css';
 
 interface ProjectFile {
   name: string;
@@ -44,17 +53,173 @@ interface Project {
   files: ProjectFile[];
   language: string;
   tags: string[];
-}
-
-interface ChatMessage {
-  user: {
+  isPublic: boolean;
+  status: 'draft' | 'submitted' | 'under_evaluation' | 'evaluated';
+  assignedEvaluator?: {
     _id: string;
     name: string;
+    email: string;
     image?: string;
   };
-  message: string;
-  timestamp: string;
+  submission?: {
+    submittedAt: string;
+    submittedBy: {
+      _id: string;
+      name: string;
+      email: string;
+      image?: string;
+    };
+    teamSnapshot: { userId: string; name: string }[];
+    fileCount: number;
+  };
+  memberPermissions?: Record<string, 'editor' | 'viewer'>;
 }
+
+interface OpenTab {
+  file: ProjectFile;
+  isDirty: boolean;
+}
+
+// Monaco EditorCursorStickiness.Never (enum: 0=Exact,1=Before,2=After,3=Never).
+// Inlined as a literal because monaco.editor.EditorCursorStickiness is undefined
+// in some production builds, which crashed when rendering remote cursors.
+const CURSOR_STICKINESS_NEVER = 3;
+
+// Custom dark theme for Monaco
+const CUSTOM_THEMES = {
+  'vs-code-dark': {
+    base: 'vs-dark' as 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'keyword', foreground: '569CD6' },
+      { token: 'string', foreground: 'CE9178' },
+      { token: 'number', foreground: 'B5CEA8' },
+      { token: 'type', foreground: '4EC9B0' },
+      { token: 'function', foreground: 'DCDCAA' },
+      { token: 'variable', foreground: '9CDCFE' },
+      { token: 'operator', foreground: 'D4D4D4' },
+      { token: 'delimiter', foreground: 'D4D4D4' },
+      { token: 'tag', foreground: '569CD6' },
+      { token: 'attribute.name', foreground: '9CDCFE' },
+      { token: 'attribute.value', foreground: 'CE9178' },
+      { token: 'identifier', foreground: '9CDCFE' },
+      { token: 'constant', foreground: '4FC1FF' },
+      { token: 'regexp', foreground: 'D16969' },
+    ],
+    colors: {
+      'editor.background': '#1e1e1e',
+      'editor.foreground': '#d4d4d4',
+      'editor.lineHighlightBackground': '#2d2d2d',
+      'editorLineNumber.foreground': '#858585',
+      'editorLineNumber.activeForeground': '#c6c6c6',
+      'editor.selectionBackground': '#264f78',
+      'editor.inactiveSelectionBackground': '#3a3d41',
+      'editorCursor.foreground': '#aeafad',
+      'editorIndentGuide.background1': '#404040',
+      'editorIndentGuide.activeBackground1': '#707070',
+      'editorBracketMatch.background': '#ffffff20',
+      'editorBracketMatch.border': '#ffffff20',
+      'editorWidget.background': '#252526',
+      'editorWidget.border': '#454545',
+      'editorSuggestWidget.background': '#252526',
+      'editorSuggestWidget.border': '#454545',
+      'editorSuggestWidget.selectedBackground': '#04395e',
+      'editorHoverWidget.background': '#252526',
+      'editorHoverWidget.border': '#454545',
+      'scrollbarSlider.background': '#79797933',
+      'scrollbarSlider.hoverBackground': '#64646466',
+      'scrollbarSlider.activeBackground': '#bfbfbf66',
+      'minimap.background': '#1e1e1e',
+      'minimapSlider.background': '#79797933',
+    },
+  },
+  'vs-code-light': {
+    base: 'vs' as 'vs',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '008000' },
+      { token: 'keyword', foreground: '0000FF' },
+      { token: 'string', foreground: 'A31515' },
+      { token: 'number', foreground: '098658' },
+      { token: 'type', foreground: '267F99' },
+      { token: 'function', foreground: '795E26' },
+      { token: 'variable', foreground: '001080' },
+      { token: 'operator', foreground: '000000' },
+      { token: 'tag', foreground: '800000' },
+      { token: 'attribute.name', foreground: 'FF0000' },
+      { token: 'attribute.value', foreground: '0000FF' },
+      { token: 'identifier', foreground: '001080' },
+      { token: 'constant', foreground: '0070C1' },
+    ],
+    colors: {
+      'editor.background': '#ffffff',
+      'editor.foreground': '#000000',
+      'editor.lineHighlightBackground': '#f3f3f3',
+      'editorLineNumber.foreground': '#237893',
+      'editorLineNumber.activeForeground': '#0b216f',
+      'editor.selectionBackground': '#add6ff',
+      'editorCursor.foreground': '#000000',
+      'editorIndentGuide.background1': '#d3d3d3',
+      'editorWidget.background': '#f3f3f3',
+      'editorWidget.border': '#c8c8c8',
+      'editorSuggestWidget.background': '#f3f3f3',
+      'editorSuggestWidget.selectedBackground': '#cee4fc',
+      'editorHoverWidget.background': '#f3f3f3',
+      'editorHoverWidget.border': '#c8c8c8',
+      'scrollbarSlider.background': '#c1c1c1',
+      'minimap.background': '#f5f5f5',
+    },
+  },
+  'github-dark': {
+    base: 'vs-dark' as 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '8b949e' },
+      { token: 'keyword', foreground: 'ff7b72' },
+      { token: 'string', foreground: 'a5d6ff' },
+      { token: 'number', foreground: '79c0ff' },
+      { token: 'type', foreground: 'ffa657' },
+      { token: 'function', foreground: 'd2a8ff' },
+      { token: 'variable', foreground: 'ffa657' },
+      { token: 'operator', foreground: 'ff7b72' },
+      { token: 'tag', foreground: '7ee787' },
+      { token: 'attribute.name', foreground: 'ffa657' },
+      { token: 'attribute.value', foreground: 'a5d6ff' },
+      { token: 'identifier', foreground: 'ffa657' },
+    ],
+    colors: {
+      'editor.background': '#0d1117',
+      'editor.foreground': '#c9d1d9',
+      'editor.lineHighlightBackground': '#161b22',
+      'editorLineNumber.foreground': '#484f58',
+      'editorLineNumber.activeForeground': '#c9d1d9',
+      'editor.selectionBackground': '#264f78',
+      'editorCursor.foreground': '#58a6ff',
+      'editorIndentGuide.background1': '#21262d',
+      'editorWidget.background': '#161b22',
+      'editorWidget.border': '#30363d',
+    },
+  },
+  'dark-plus': {
+    base: 'vs-dark' as 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'comment', foreground: '6A9955' },
+      { token: 'keyword', foreground: '569CD6' },
+      { token: 'string', foreground: 'CE9178' },
+      { token: 'number', foreground: 'B5CEA8' },
+      { token: 'type', foreground: '4EC9B0' },
+      { token: 'function', foreground: 'DCDCAA' },
+      { token: 'variable', foreground: '9CDCFE' },
+    ],
+    colors: {
+      'editor.background': '#1E1E1E',
+      'editor.foreground': '#D4D4D4',
+      'editor.lineHighlightBackground': '#2D2D2D',
+    },
+  },
+} as const;
 
 // Helper to find the first file in the tree
 function findFirstFile(items: ProjectFile[]): ProjectFile | null {
@@ -62,6 +227,18 @@ function findFirstFile(items: ProjectFile[]): ProjectFile | null {
     if (item.type !== 'folder' && !item.children) return item;
     if (item.children) {
       const found = findFirstFile(item.children);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// Helper to find a file by path in the tree
+function findFileByPath(items: ProjectFile[], path: string): ProjectFile | null {
+  for (const item of items) {
+    if (item.path === path) return item;
+    if (item.children) {
+      const found = findFileByPath(item.children, path);
       if (found) return found;
     }
   }
@@ -82,6 +259,32 @@ function collectFiles(items: ProjectFile[]): ProjectFile[] {
   return result;
 }
 
+// Helper to get file icon based on extension
+function getFileIcon(file: ProjectFile): string {
+  const icons: Record<string, string> = {
+    javascript: '🟨',
+    typescript: '🟦',
+    python: '🐍',
+    java: '☕',
+    html: '🌐',
+    css: '🎨',
+    json: '📋',
+    markdown: '📝',
+    plaintext: '📄',
+  };
+  return icons[file.language || ''] || '📄';
+}
+
+// Convert an http(s) URL to a websocket URL for the Yjs /collab endpoint
+function toWsUrl(url: string): string {
+  const wsUrl = url.startsWith('https://')
+    ? url.replace('https://', 'wss://')
+    : url.startsWith('http://')
+    ? url.replace('http://', 'ws://')
+    : url;
+  return `${wsUrl.replace(/\/+$/, '')}/collab`;
+}
+
 export const dynamic = 'force-dynamic';
 
 export default function EditorPage({ params }: { params: { id: string } }) {
@@ -91,21 +294,88 @@ export default function EditorPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeFile, setActiveFile] = useState<ProjectFile | null>(null);
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
   const [activePanel, setActivePanel] = useState<'chat' | 'ai' | 'members'>('chat');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
+  const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [showShareProject, setShowShareProject] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState('');
+  const [projectDescriptionDraft, setProjectDescriptionDraft] = useState('');
+  const [projectVisibilityDraft, setProjectVisibilityDraft] = useState(true);
+  const [inviteLink, setInviteLink] = useState('');
+  const [savingProjectSettings, setSavingProjectSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [theme, setTheme] = useState<string>('vs-code-dark');
+  const [showMinimap, setShowMinimap] = useState(true);
+  const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
+  const [statistics, setStatistics] = useState({ line: 1, column: 1, lineCount: 1, selectedText: '' });
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [isFormatting, setIsFormatting] = useState(false);
+  const [remoteCursors, setRemoteCursors] = useState<Record<string, any>>({});
+  const [remoteSelections, setRemoteSelections] = useState<Record<string, any>>({});
+  const [typingUsers, setTypingUsers] = useState<Record<string, { name: string; file?: string; color: string }>>({});
+  const [chatTypingUsers, setChatTypingUsers] = useState<Record<string, { name: string }>>({});
+  const [isNetworkOnline, setIsNetworkOnline] = useState<boolean>(
+    typeof window !== 'undefined' ? navigator.onLine : true
+  );
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'saving' | 'offline'>('synced');
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [currentFileOnlineUsers, setCurrentFileOnlineUsers] = useState<any[]>([]);
+  const [selectedAIAction, setSelectedAIAction] = useState<string | null>(null);
+  // Socket exposed to child components via state (a ref mutation alone doesn't
+  // re-render, so children would see null until some unrelated state changed).
+  const [socketInstance, setSocketInstance] = useState<Socket | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  // Bumped on every Monaco mount so the Yjs binding effect re-runs even when
+  // the editor remounts (e.g. refreshKey changes) with a brand-new model.
+  const [editorMountId, setEditorMountId] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const yproviderRef = useRef<WebsocketProvider | null>(null);
+  const ybindingRef = useRef<MonacoBinding | null>(null);
+  // Whether the Yjs websocket is actually CONNECTED (not merely bound). The
+  // binding is created unconditionally, so its existence proves nothing about
+  // connectivity - this ref is what decides if realtime sync works.
+  const yjsConnectedRef = useRef(false);
+  const [yjsConnected, setYjsConnected] = useState(false);
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedContentRef = useRef<Record<string, string>>({});
+  // Pending save that failed due to a transient network error - retried
+  // automatically once connectivity is restored.
+  const pendingSaveRef = useRef<{ filePath: string; content: string } | null>(null);
+  const saveRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyTabsRef = useRef<Record<string, boolean>>({});
+  const cursorDecorationsRef = useRef<Record<string, string[]>>({});
+  const selectionDecorationsRef = useRef<Record<string, string[]>>({});
+  const typingTimeoutRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const cursorUpdateThrottleRef = useRef<Record<string, number>>({});
+  const activeFilePathRef = useRef<string | null>(null);
+  const lastEmittedContentRef = useRef<Record<string, string>>({});
+
+  // Switch the active file. Detaches any active Yjs binding FIRST so that the
+  // controlled `value` prop update (which rewrites the whole Monaco model)
+  // cannot leak the incoming file's content into the previous file's shared
+  // Y.Text through a stale binding.
+  const switchActiveFile = useCallback((file: ProjectFile | null) => {
+    try {
+      ybindingRef.current?.destroy();
+    } catch (_) {
+      // ignore - binding may already be destroyed
+    }
+    ybindingRef.current = null;
+    setActiveFile(file);
+  }, []);
 
   // Load project
   useEffect(() => {
@@ -130,42 +400,93 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         return;
       }
 
+      if (!data.project) {
+        setError('Project data not found');
+        return;
+      }
+
       setProject(data.project);
-      setActiveFile(findFirstFile(data.project.files) || null);
+
+      const files = Array.isArray(data.project.files) ? data.project.files : [];
+      const firstFile = findFirstFile(files);
+      switchActiveFile(firstFile || null);
+      if (firstFile) {
+        setOpenTabs([{ file: firstFile, isDirty: false }]);
+      }
 
       const userId = session?.user?.id;
-      setIsOwner(data.project.owner._id === userId);
+      setIsOwner(data.project.owner?._id === userId);
       setIsMember(
-        data.project.members.some((m: any) => m._id === userId) ||
-        data.project.owner._id === userId
+        (data.project.members || []).some((m: any) => m._id === userId) ||
+        data.project.owner?._id === userId
       );
 
-      // Load chat messages
       if (data.project.chatMessages) {
         setChatMessages(data.project.chatMessages);
       }
     } catch (err) {
+      console.error('fetchProject error:', err);
       setError('Failed to load project');
     } finally {
       setLoading(false);
     }
   };
 
+  // Register custom Monaco themes
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+
+    Object.entries(CUSTOM_THEMES).forEach(([name, themeData]) => {
+      monaco.editor.defineTheme(name, themeData as any);
+    });
+  }, [monacoRef.current]);
+
+  // Merge incoming chat messages into state, skipping duplicates (matched by
+  // author + text + near-identical timestamp) so optimistic copies, socket
+  // broadcasts and polled/backfilled messages don't render twice.
+  const mergeChatMessages = useCallback((incoming: ChatMessage[]) => {
+    if (!incoming.length) return;
+    setChatMessages((prev) => {
+      const next = [...prev];
+      for (const msg of incoming) {
+        const isDuplicate = next.some(
+          (m) =>
+            m.message === msg.message &&
+            m.user?._id === msg.user?._id &&
+            Math.abs(new Date(m.timestamp).getTime() - new Date(msg.timestamp).getTime()) < 5000
+        );
+        if (!isDuplicate) next.push(msg);
+      }
+      return next.length === prev.length ? prev : next;
+    });
+  }, []);
+
+  // Fetch chat messages from the API. Used to backfill anything missed while
+  // the realtime socket was disconnected so a manual refresh is never needed.
+  const fetchLatestChatMessages = useCallback(async () => {
+    if (!project?._id) return;
+    try {
+      const res = await fetch(`/api/projects/${project._id}/messages`);
+      if (!res.ok) return;
+      const data = await res.json();
+      mergeChatMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      // Polling is best-effort; ignore transient failures.
+    }
+  }, [project?._id, mergeChatMessages]);
+
   // Setup socket connection
   useEffect(() => {
     if (!project || !isMember) return;
 
-    // NEXT_PUBLIC_* vars are inlined at BUILD time (not runtime).
-    // If missing, never fall back to localhost in production - that produces
-    // an unreachable URL and misleads debugging. Fall back to same-origin so
-    // the failure is visible, and log a clear error.
     const socketUrl =
       process.env.NEXT_PUBLIC_SOCKET_URL ||
       (typeof window !== 'undefined' ? window.location.origin : undefined);
 
     if (!process.env.NEXT_PUBLIC_SOCKET_URL) {
       console.error(
-        '[CodeSynce] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
+        '[CodeSync] NEXT_PUBLIC_SOCKET_URL is not set.\n' +
           '  Add it in Vercel: Settings -> Environment Variables -> NEXT_PUBLIC_SOCKET_URL\n' +
           '  Point it to your Railway socket server (e.g. https://your-app.up.railway.app).\n' +
           '  Then redeploy - env changes require a fresh build.'
@@ -174,19 +495,54 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
+    setSocketInstance(socket);
 
-    socket.emit('join-project', {
+    // Set up Yjs collaborative editing provider (connects to /collab endpoint)
+    try {
+      if (!socketUrl) throw new Error('No socket URL available for Yjs provider');
+
+      const ydoc = new Y.Doc();
+      ydocRef.current = ydoc;
+
+      const provider = new WebsocketProvider(toWsUrl(socketUrl), project._id, ydoc, {
+        connect: true,
+      });
+      yproviderRef.current = provider;
+
+      // Track Yjs connectivity. This is what decides whether the socket.io
+      // file-change fallback needs to carry live typing instead.
+      provider.on('status', ({ status }: { status: string }) => {
+        const connected = status === 'connected';
+        yjsConnectedRef.current = connected;
+        setYjsConnected(connected);
+        if (process.env.NODE_ENV !== 'production') {
+          console.log(`[Realtime] Yjs ${status} for project:${project._id}`);
+        }
+      });
+
+      // Set user awareness info (name + color) for remote cursors
+      provider.awareness.setLocalStateField('user', {
+        name: session?.user?.name || 'Anonymous',
+        color: '#4da3ff',
+      });
+    } catch (err) {
+      console.error('[CodeSync] Failed to set up Yjs provider:', err);
+    }
+
+    // Re-used on every (re)connect so the client automatically rejoins the
+    // project room after network drops - no refresh needed.
+    const joinPayload = {
       projectId: project._id,
       user: {
         _id: session?.user?.id,
         name: session?.user?.name,
         image: session?.user?.image,
       },
-    });
+    };
 
     socket.on('user-joined', ({ users }) => {
       setOnlineUsers(users);
@@ -197,52 +553,645 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     });
 
     socket.on('new-message', (msg: ChatMessage) => {
-      setChatMessages((prev) => [...prev, msg]);
+      mergeChatMessages([msg]);
+    });
+
+    // Chat typing indicators (a collaborator composing a chat message)
+    socket.on('chat-typing-started', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+      setChatTypingUsers((prev) => ({
+        ...prev,
+        [userId]: { name: data.user?.name || 'Someone' },
+      }));
+    });
+
+    socket.on('chat-typing-stopped', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId) return;
+      setChatTypingUsers((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    });
+
+    // Presence state - initial snapshot of online users
+    socket.on('presence-state', ({ users }) => {
+      setOnlineUsers(users);
+    });
+
+    // Live cursor positions
+    socket.on('cursor-moved', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setRemoteCursors((prev) => ({
+        ...prev,
+        [userId]: {
+          ...data,
+          userId,
+          timestamp: Date.now(),
+        },
+      }));
+    });
+
+    // Remote selections
+    socket.on('selection-updated', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setRemoteSelections((prev) => ({
+        ...prev,
+        [userId]: {
+          ...data,
+          userId,
+          timestamp: Date.now(),
+        },
+      }));
+    });
+
+    // Typing indicators
+    socket.on('typing-started', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setTypingUsers((prev) => ({
+        ...prev,
+        [userId]: {
+          name: data.user?.name || 'Someone',
+          file: data.file,
+          color: data.color || data.user?.color || '#4da3ff',
+        },
+      }));
+      setOnlineUsers(data.users || []);
+    });
+
+    socket.on('typing-stopped', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (!userId || userId === session?.user?.id) return;
+
+      setTypingUsers((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      setOnlineUsers(data.users || []);
+    });
+
+    // File saved broadcast
+    socket.on('file-saved-broadcast', (data: any) => {
+      const userId = data.user?._id || data.user?.id;
+      if (userId === session?.user?.id) {
+        setSyncStatus('synced');
+        setLastSavedAt(new Date(data.timestamp));
+      }
+    });
+
+    // File opened by other users
+    socket.on('file-opened-broadcast', (data: any) => {
+      if (data.users) {
+        setOnlineUsers(data.users);
+      }
+    });
+
+    // Live code updates from collaborators (socket.io fallback used when the
+    // Yjs CRDT channel is unavailable, e.g. server down / ws blocked).
+    // Registered once per connection so it keeps working across reconnects and
+    // file switches.
+    socket.on('file-updated', ({ file, content }: { file: string; content: string }) => {
+      if (file !== activeFilePathRef.current) return;
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Realtime] Received remote change for ${file} (fallback)`);
+      }
+      applyRemoteContent(content);
+    });
+
+    // Socket connection state - re-join the project room on every (re)connect
+    socket.on('connect', () => {
+      setSyncStatus('synced');
+      setSocketConnected(true);
+      socket.emit('join-project', joinPayload);
+      // Backfill chat messages missed while disconnected (no refresh needed).
+      fetchLatestChatMessages();
+    });
+    socket.on('disconnect', () => {
+      setSyncStatus('offline');
+      setSocketConnected(false);
+    });
+
+    socket.on('connect_error', () => {
+      setSyncStatus('offline');
+      setSocketConnected(false);
     });
 
     return () => {
       socket.emit('leave-project', { projectId: project._id });
       socket.disconnect();
+
+      // Clean up Yjs provider and binding
+      try {
+        ybindingRef.current?.destroy();
+        ybindingRef.current = null;
+        yproviderRef.current?.destroy();
+        yproviderRef.current = null;
+        ydocRef.current?.destroy();
+        ydocRef.current = null;
+      } catch (err) {
+        console.error('[CodeSync] Failed to clean up Yjs:', err);
+      }
     };
   }, [project?._id, isMember]);
 
-  // Listen for remote file updates
+  // Fallback while realtime is unavailable: poll for new chat messages so they
+  // still appear without a manual refresh (e.g. socket server not started yet,
+  // network drop, or a deployment where the socket URL is unreachable).
   useEffect(() => {
-    if (!socketRef.current) return;
+    if (socketConnected || !isMember || !project?._id) return;
+    const interval = setInterval(fetchLatestChatMessages, 7000);
+    return () => clearInterval(interval);
+  }, [socketConnected, isMember, project?._id, fetchLatestChatMessages]);
 
-    const handleFileUpdated = ({ file, content }: { file: string; content: string }) => {
-      if (file === activeFile?.path && editorRef.current) {
-        isRemoteUpdateRef.current = true;
-        editorRef.current.setValue(content);
-        setTimeout(() => {
-          isRemoteUpdateRef.current = false;
-        }, 100);
-      }
-    };
+  // Keep a ref of the active file path for socket handlers (avoids stale closures)
+  useEffect(() => {
+    activeFilePathRef.current = activeFile?.path ?? null;
+  }, [activeFile?.path]);
 
-    socketRef.current.on('file-updated', handleFileUpdated);
+  // Bind the Monaco model to the Yjs document of the ACTIVE file. Re-created on
+  // every file switch / editor mount so each file syncs its own Y.Text - a
+  // stale binding would pipe edits into the previously open file's document.
+  useEffect(() => {
+    if (!editorMountId) return;
+    const editor = editorRef.current;
+    const ydoc = ydocRef.current;
+    const provider = yproviderRef.current;
+    if (!editor || !ydoc || !provider || !activeFile?.path) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Detach any previous binding before touching the model.
+    try {
+      ybindingRef.current?.destroy();
+    } catch (_) {
+      // ignore
+    }
+    ybindingRef.current = null;
+
+    const ytext = ydoc.getText(activeFile.path);
+    const localContent = activeFile.content ?? '';
+
+    // Seed the shared document from persisted content when still empty.
+    if (ytext.toString() === '' && localContent) {
+      ytext.insert(0, localContent);
+    }
+
+    // Prefer the live collaborative state over the DB snapshot.
+    const remoteContent = ytext.toString();
+    if (remoteContent !== model.getValue()) {
+      isRemoteUpdateRef.current = true;
+      model.setValue(remoteContent);
+      setTimeout(() => {
+        isRemoteUpdateRef.current = false;
+      }, 0);
+    }
+
+    ybindingRef.current = new MonacoBinding(
+      ytext,
+      model,
+      new Set([editor]),
+      provider.awareness
+    );
 
     return () => {
-      socketRef.current?.off('file-updated', handleFileUpdated);
+      try {
+        ybindingRef.current?.destroy();
+      } catch (_) {
+        // ignore
+      }
+      ybindingRef.current = null;
     };
+  }, [editorMountId, activeFile?.path]);
+
+  // Apply content received from a collaborator as a minimal edit so the local
+  // user's caret position and selection are preserved while others type.
+  const applyRemoteContent = useCallback((content: string) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    const current = model.getValue();
+    if (current === content) return;
+
+    isRemoteUpdateRef.current = true;
+
+    try {
+      if (!monaco) throw new Error('monaco not ready');
+
+      // Isolate the actual change via common prefix/suffix
+      let start = 0;
+      const minLen = Math.min(current.length, content.length);
+      while (start < minLen && current.charCodeAt(start) === content.charCodeAt(start)) start++;
+
+      let endOld = current.length;
+      let endNew = content.length;
+      while (
+        endOld > start &&
+        endNew > start &&
+        current.charCodeAt(endOld - 1) === content.charCodeAt(endNew - 1)
+      ) {
+        endOld--;
+        endNew--;
+      }
+
+      const selection = editor.getSelection();
+      const startPos = model.getPositionAt(start);
+      const endPos = model.getPositionAt(endOld);
+
+      editor.executeEdits('remote-collab', [
+        {
+          range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
+          text: content.slice(start, endNew),
+          forceMoveMarkers: true,
+        },
+      ]);
+
+      // Restore the local user's caret/selection
+      if (selection) editor.setSelection(selection);
+    } catch {
+      editor.setValue(content);
+    } finally {
+      setTimeout(() => {
+        isRemoteUpdateRef.current = false;
+      }, 50);
+    }
+  }, []);
+
+  // Cleanup stale remote cursors/selections after 10s of no updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setRemoteCursors((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, data] of Object.entries(next)) {
+          if (now - data.timestamp > 10000) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+      setRemoteSelections((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        for (const [id, data] of Object.entries(next)) {
+          if (now - data.timestamp > 10000) {
+            delete next[id];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Render remote cursors and selections as Monaco decorations
+  useEffect(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+
+    const model = editor.getModel();
+    if (!model) return;
+
+    // Get current active file path
+    const currentPath = activeFile?.path;
+
+    // Collect decorations for all remote cursors on the current file
+    const cursorDecorations: any[] = [];
+    const cursorKeys: string[] = [];
+
+    Object.entries(remoteCursors).forEach(([userId, data]) => {
+      // Only show cursors for the currently open file
+      if (data.file && data.file !== currentPath) return;
+      if (!data.position) return;
+
+      const color = data.color || '#4da3ff';
+      const userName = data.user?.name || 'User';
+      const position = data.position;
+
+      // Cursor line decoration
+      cursorDecorations.push({
+        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 1),
+        options: {
+          className: 'remote-cursor',
+          beforeContentClassName: `remote-cursor-${userId}`,
+          stickiness: CURSOR_STICKINESS_NEVER,
+          zIndex: 25,
+        },
+      });
+
+      // Cursor label (username) above
+      cursorDecorations.push({
+        range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+        options: {
+          afterContentClassName: `remote-cursor-label-${userId}`,
+          stickiness: CURSOR_STICKINESS_NEVER,
+          zIndex: 30,
+        },
+      });
+
+      // Add CSS for the cursor color
+      const styleEl = document.getElementById(`cursor-style-${userId}`) || document.createElement('style');
+      styleEl.id = `cursor-style-${userId}`;
+      styleEl.textContent = `
+        .remote-cursor-${userId} {
+          border-left: 2px solid ${color} !important;
+        }
+        .remote-cursor-label-${userId}::after {
+          content: '${userName.replace(/'/g, "\\'")}';
+          position: absolute;
+          top: -16px;
+          left: -2px;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 2px 2px 2px 0;
+          background: ${color};
+          color: #fff;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 30;
+          line-height: 16px;
+        }
+      `;
+      if (!styleEl.parentNode) document.head.appendChild(styleEl);
+
+      cursorKeys.push(userId);
+    });
+
+    // Collect selection decorations
+    const selectionDecorations: any[] = [];
+    const selectionKeys: string[] = [];
+
+    Object.entries(remoteSelections).forEach(([userId, data]) => {
+      if (data.file && data.file !== currentPath) return;
+      if (!data.selection) return;
+
+      const color = data.color || '#4da3ff';
+      const selection = data.selection;
+
+      if (selection.startLineNumber === selection.endLineNumber && selection.startColumn === selection.endColumn) {
+        return; // empty selection
+      }
+
+      // Selection highlight
+      const rgbaColor = hexToRgba(color, 0.3);
+      selectionDecorations.push({
+        range: new monaco.Range(
+          selection.startLineNumber,
+          selection.startColumn,
+          selection.endLineNumber,
+          selection.endColumn
+        ),
+        options: {
+          className: `remote-selection-${userId}`,
+          stickiness: CURSOR_STICKINESS_NEVER,
+          zIndex: 20,
+        },
+      });
+
+      // Add CSS
+      const styleEl = document.getElementById(`selection-style-${userId}`) || document.createElement('style');
+      styleEl.id = `selection-style-${userId}`;
+      styleEl.textContent = `
+        .remote-selection-${userId} {
+          background-color: ${rgbaColor} !important;
+          border: 1px solid ${color} !important;
+          border-radius: 2px;
+        }
+      `;
+      if (!styleEl.parentNode) document.head.appendChild(styleEl);
+
+      selectionKeys.push(userId);
+    });
+
+    // Apply decorations
+    if (cursorDecorations.length > 0) {
+      editor.deltaDecorations(cursorDecorationsRef.current[`${currentPath}-cursors`] || [], cursorDecorations);
+      cursorDecorationsRef.current[`${currentPath}-cursors`] = cursorDecorations;
+    } else {
+      editor.deltaDecorations(cursorDecorationsRef.current[`${currentPath}-cursors`] || [], []);
+      cursorDecorationsRef.current[`${currentPath}-cursors`] = [];
+    }
+
+    if (selectionDecorations.length > 0) {
+      editor.deltaDecorations(selectionDecorationsRef.current[`${currentPath}-selections`] || [], selectionDecorations);
+      selectionDecorationsRef.current[`${currentPath}-selections`] = selectionDecorations;
+    } else {
+      editor.deltaDecorations(selectionDecorationsRef.current[`${currentPath}-selections`] || [], []);
+      selectionDecorationsRef.current[`${currentPath}-selections`] = [];
+    }
+  }, [remoteCursors, remoteSelections, activeFile?.path]);
+
+  // Track users viewing the current file
+  useEffect(() => {
+    if (!onlineUsers || !activeFile) {
+      setCurrentFileOnlineUsers([]);
+      return;
+    }
+    const users = onlineUsers.filter(
+      (u) => u.currentFile === activeFile.path && (u._id || u.id) !== session?.user?.id
+    );
+    setCurrentFileOnlineUsers(users);
+  }, [onlineUsers, activeFile?.path]);
+
+  // Announce file opened when switching files
+  useEffect(() => {
+    if (!activeFile?.path || !project?._id) return;
+    socketRef.current?.emit('file-opened', {
+      projectId: project._id,
+      file: activeFile.path,
+      user: {
+        _id: session?.user?.id,
+        name: session?.user?.name,
+        image: session?.user?.image,
+      },
+    });
   }, [activeFile?.path]);
+
+  // Helper to convert hex to rgba
+  function hexToRgba(hex: string, alpha: number): string {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!result) return `rgba(77, 163, 255, ${alpha})`;
+    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
+  }
 
   const handleEditorMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    // Track cursor position
+    // Register custom themes
+    Object.entries(CUSTOM_THEMES).forEach(([name, themeData]) => {
+      monaco.editor.defineTheme(name, themeData as any);
+    });
+
+    // Set initial theme
+    monaco.editor.setTheme(theme);
+
+    // The Yjs <-> Monaco binding is created by the effect keyed on
+    // [editorMountId, activeFile?.path] so it is refreshed on every file
+    // switch and every editor (re)mount.
+    setEditorMountId((id) => id + 1);
+
+    // Track cursor position for status bar
     editor.onDidChangeCursorPosition((e: any) => {
+      const model = editor.getModel();
+      if (model) {
+        setStatistics({
+          line: e.position.lineNumber,
+          column: e.position.column,
+          lineCount: model.getLineCount(),
+          selectedText: '',
+        });
+      }
+
+      // Throttle cursor broadcast to every 50ms max
+      const now = Date.now();
+      const lastUpdate = cursorUpdateThrottleRef.current['cursor'] || 0;
+      if (now - lastUpdate < 50) return;
+      cursorUpdateThrottleRef.current['cursor'] = now;
+
       socketRef.current?.emit('cursor-update', {
         projectId: project?._id,
         position: e.position,
+        file: activeFile?.path,
         user: {
           _id: session?.user?.id,
           name: session?.user?.name,
         },
       });
     });
+
+    editor.onDidChangeCursorSelection((e: any) => {
+      const model = editor.getModel();
+      if (model) {
+        const selection = e.selection;
+        const selectedText = selection.isEmpty() ? '' : model.getValueInRange(selection);
+        setStatistics((prev) => ({
+          ...prev,
+          selectedText,
+          line: selection.positionLineNumber,
+          column: selection.positionColumn,
+        }));
+
+        // Broadcast selection changes to other users
+        socketRef.current?.emit('selection-change', {
+          projectId: project?._id,
+          selection: {
+            startLineNumber: selection.startLineNumber,
+            startColumn: selection.startColumn,
+            endLineNumber: selection.endLineNumber,
+            endColumn: selection.endColumn,
+          },
+          file: activeFile?.path,
+          user: {
+            _id: session?.user?.id,
+            name: session?.user?.name,
+          },
+        });
+      }
+    });
+
+    // Error highlighting - listen for marker changes
+    monaco.editor.onDidChangeMarkers(() => {
+      const markers = monaco.editor.getModelMarkers({ resource: editor.getModel()?.uri });
+      setErrors(markers || []);
+    });
+
+    // Keyboard shortcuts inside editor
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      if (activeFile) {
+        saveFile(activeFile.path, editor.getValue());
+        setOpenTabs((prev) =>
+          prev.map((tab) =>
+            tab.file.path === activeFile.path ? { ...tab, isDirty: false } : tab
+          )
+        );
+      }
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {
+      setSearchOpen(true);
+    });
+
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
+      setSearchOpen(true);
+    });
+
+    // Format document: Shift+Alt+F
+    editor.addCommand(
+      monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+      () => formatDocument()
+    );
   };
+
+  const [errors, setErrors] = useState<any[]>([]);
+
+  // Ref mirror of saveFile so retry callbacks always use the latest closure
+  // (assigned below, after saveFile is defined)
+  const saveFileRef = useRef<typeof saveFile | null>(null);
+
+  // Realtime connectivity tracking: listen to browser network events and sync
+  // the status + force socket reconnection when the network comes back.
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsNetworkOnline(false);
+      setSyncStatus('offline');
+    };
+    const handleOnline = () => {
+      setIsNetworkOnline(true);
+      // Force socket.io to reconnect immediately instead of waiting for its
+      // own backoff timer.
+      const socket = socketRef.current;
+      if (socket && !socket.connected) {
+        socket.connect();
+      } else {
+        setSyncStatus('synced');
+      }
+      // Flush any save that failed while we were offline.
+      const pending = pendingSaveRef.current;
+      if (pending) {
+        if (saveRetryTimeoutRef.current) clearTimeout(saveRetryTimeoutRef.current);
+        saveRetryTimeoutRef.current = setTimeout(() => {
+          saveFileRef.current?.(pending.filePath, pending.content);
+        }, 500);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      if (saveRetryTimeoutRef.current) clearTimeout(saveRetryTimeoutRef.current);
+    };
+  }, []);
+
+  // The displayed status reflects TRUE network connectivity, not realtime
+  // channel health. "Offline" must only appear when the browser actually has
+  // no internet (navigator.onLine === false). If the network is up but the
+  // collab channels are unreachable, edits still persist via HTTP saves, so
+  // the dot stays green (Synced/Saving) and the tooltip explains the
+  // degraded realtime state instead of a misleading "Offline".
+  const realtimeConnected = socketConnected || yjsConnected;
+  const effectiveSyncStatus: 'synced' | 'saving' | 'offline' =
+    !isNetworkOnline ? 'offline' : syncStatus === 'offline' ? 'synced' : syncStatus;
+
 
   // Save file content to the database (debounced)
   const saveFile = useCallback((filePath: string, content: string) => {
@@ -250,6 +1199,9 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
     // Skip if content hasn't changed since last save
     if (lastSavedContentRef.current[filePath] === content) return;
+
+    // Set saving status
+    setSyncStatus('saving');
 
     // Clear any existing timeout
     if (saveTimeoutRef.current) {
@@ -267,30 +1219,160 @@ export default function EditorPage({ params }: { params: { id: string } }) {
 
         if (res.ok) {
           lastSavedContentRef.current[filePath] = content;
+          pendingSaveRef.current = null;
+          if (saveRetryTimeoutRef.current) {
+            clearTimeout(saveRetryTimeoutRef.current);
+            saveRetryTimeoutRef.current = null;
+          }
+          setSyncStatus('synced');
+          const now = new Date();
+          setLastSavedAt(now);
+
+          // Broadcast save event to all collaborators
+          socketRef.current?.emit('file-saved', {
+            projectId: project._id,
+            file: filePath,
+            user: {
+              _id: session?.user?.id,
+              name: session?.user?.name,
+            },
+          });
         }
       } catch (err) {
         console.error('Failed to save file:', err);
+        // Only mark offline if we truly lost connectivity. Otherwise keep the
+        // save pending and retry with backoff - one failed request doesn't
+        // mean we're offline.
+        pendingSaveRef.current = { filePath, content };
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          setSyncStatus('offline');
+        } else if (saveRetryTimeoutRef.current) {
+          clearTimeout(saveRetryTimeoutRef.current);
+        }
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+          saveRetryTimeoutRef.current = setTimeout(() => {
+            saveFileRef.current?.(filePath, content);
+          }, 3000);
+        }
       }
     }, 800);
-  }, [project]);
+  }, [project, session?.user?.id, session?.user?.name]);
+  saveFileRef.current = saveFile;
 
   const handleEditorChange = (value: string | undefined) => {
-    if (!value || !project || !activeFile) return;
     if (isRemoteUpdateRef.current) return;
+    if (value === undefined || !project || !activeFile) return;
 
-    // Update local state so code is available for Run Code feature
-    setActiveFile((prev) => (prev ? { ...prev, content: value } : null));
+    // Update local state
+    const updatedFile = { ...activeFile, content: value };
 
-    // Broadcast file change to other users
-    socketRef.current?.emit('file-change', {
+    // Mark tab as dirty
+    setOpenTabs((prev) =>
+      prev.map((tab) =>
+        tab.file.path === activeFile.path ? { ...tab, file: updatedFile, isDirty: true } : tab
+      )
+    );
+    dirtyTabsRef.current[activeFile.path] = true;
+
+    // Also update activeFile reference
+    setActiveFile(updatedFile);
+
+    // Send typing indicator
+    socketRef.current?.emit('typing-start', {
       projectId: project._id,
       file: activeFile.path,
-      content: value,
+      user: {
+        _id: session?.user?.id,
+        name: session?.user?.name,
+      },
     });
+
+    // Clear previous typing stop timeout and set new one
+    if (typingTimeoutRef.current['typing']) {
+      clearTimeout(typingTimeoutRef.current['typing']);
+    }
+    typingTimeoutRef.current['typing'] = setTimeout(() => {
+      socketRef.current?.emit('typing-stop', {
+        projectId: project._id,
+        user: {
+          _id: session?.user?.id,
+          name: session?.user?.name,
+        },
+      });
+    }, 3000);
+
+    // Broadcast file change to other users (skip identical payloads).
+    // Yjs is the primary realtime transport (CRDT merge, cursors). When the
+    // Yjs websocket is NOT actually connected, fall back to socket.io so live
+    // typing still propagates. The fallback never runs while Yjs is healthy,
+    // so there is no double-broadcast.
+    const yjsLive = !!ybindingRef.current && yjsConnectedRef.current;
+    if (!yjsLive && lastEmittedContentRef.current[activeFile.path] !== value) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Realtime] Broadcast local change (fallback) for ${activeFile.path}`);
+      }
+      lastEmittedContentRef.current[activeFile.path] = value;
+      socketRef.current?.emit('file-change', {
+        projectId: project._id,
+        file: activeFile.path,
+        content: value,
+      });
+    }
 
     // Auto-save to database so code persists across sessions
     saveFile(activeFile.path, value);
   };
+
+  // Format document using Monaco's built-in formatter
+  const formatDocument = useCallback(() => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco || !activeFile) return;
+
+    setIsFormatting(true);
+    try {
+      // Use Monaco's format action
+      editor.trigger('format-document', 'editor.action.formatDocument', {});
+    } catch (err) {
+      console.error('Format failed:', err);
+      alert('Formatting is not supported for this file type');
+    } finally {
+      setTimeout(() => setIsFormatting(false), 100);
+    }
+  }, [activeFile]);
+
+  // Tab management
+  const openFileInTab = useCallback((file: ProjectFile) => {
+    setOpenTabs((prev) => {
+      const existing = prev.find((tab) => tab.file.path === file.path);
+      if (existing) return prev;
+      return [...prev, { file, isDirty: false }];
+    });
+    switchActiveFile(file);
+  }, []);
+
+  const closeTab = useCallback((path: string) => {
+    setOpenTabs((prev) => {
+      const tab = prev.find((t) => t.file.path === path);
+      if (tab?.isDirty && dirtyTabsRef.current[path]) {
+        if (!confirm(`"${tab.file.name}" has unsaved changes. Close anyway?`)) {
+          return prev;
+        }
+      }
+      delete dirtyTabsRef.current[path];
+      return prev.filter((t) => t.file.path !== path);
+    });
+  }, []);
+
+  // When closing active tab, switch to adjacent tab
+  useEffect(() => {
+    const isCurrentTabOpen = openTabs.some((tab) => tab.file.path === activeFile?.path);
+    if (!isCurrentTabOpen && openTabs.length > 0) {
+      switchActiveFile(openTabs[openTabs.length - 1].file);
+    } else if (!isCurrentTabOpen && openTabs.length === 0) {
+      switchActiveFile(null);
+    }
+  }, [openTabs]);
 
   const handleAcceptRequest = async (userId: string) => {
     try {
@@ -324,6 +1406,567 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     }
   };
 
+  const handleRemoveMember = async (memberId: string) => {
+    if (!confirm('Remove this member from the project?')) return;
+
+    try {
+      const res = await fetch(
+        `/api/projects/${project?._id}?userId=${memberId}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to remove member');
+        return;
+      }
+
+      fetchProject();
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+      alert('Failed to remove member');
+    }
+  };
+
+  const handleUpdateProjectDetails = async (updated: {
+    name?: string;
+    description?: string;
+    language?: string;
+    tags?: string[];
+    isPublic?: boolean;
+  }) => {
+    try {
+      const res = await fetch(`/api/projects/${project?._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to update project details');
+        return;
+      }
+
+      fetchProject();
+    } catch (err) {
+      console.error('Failed to update project details:', err);
+      alert('Failed to update project details');
+    }
+  };
+
+  const handleClearChat = async () => {
+    try {
+      const res = await fetch(`/api/projects/${project?._id}?clearChat=true`, {
+        method: 'PUT',
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to clear chat');
+        return;
+      }
+
+      setChatMessages([]);
+      alert('Chat messages cleared');
+    } catch (err) {
+      console.error('Failed to clear chat:', err);
+      alert('Failed to clear chat');
+    }
+  };
+
+  const openProjectSettings = () => {
+    if (!project) return;
+    setProjectNameDraft(project.name);
+    setProjectDescriptionDraft(project.description);
+    setProjectVisibilityDraft(project.isPublic);
+    setInviteLink('');
+    setShowProjectSettings(true);
+  };
+
+  const handleSaveProjectSettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!project || !projectNameDraft.trim() || !projectDescriptionDraft.trim()) return;
+
+    setSavingProjectSettings(true);
+    try {
+      const res = await fetch(`/api/projects/${project._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: projectNameDraft.trim(), description: projectDescriptionDraft.trim(), isPublic: projectVisibilityDraft }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update project');
+
+      setProject((current) => current ? { ...current, ...data.project } : current);
+      setShowProjectSettings(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update project');
+    } finally {
+      setSavingProjectSettings(false);
+    }
+  };
+
+  const handlePermissionChange = async (memberId: string, permission: 'editor' | 'viewer') => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId, permission }),
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to update permission');
+    setProject((current) => current ? { ...current, memberPermissions: data.memberPermissions } : current);
+  };
+
+  const handleGenerateInvite = async () => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}/invite`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to create invite link');
+    setInviteLink(`${window.location.origin}/invite?project=${project._id}&token=${data.token}`);
+  };
+
+  const handleLeaveProject = async () => {
+    if (!project || !confirm('Leave this project? You will need a new invite or approved join request to return.')) return;
+    const res = await fetch(`/api/projects/${project._id}?leave=true`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to leave project');
+    router.push('/home');
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project || !confirm(`Delete "${project.name}" permanently? This cannot be undone.`)) return;
+    const res = await fetch(`/api/projects/${project._id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to delete project');
+    router.push('/home');
+  };
+
+  const handleRequestProjectAccess = async () => {
+    if (!project) return;
+    const res = await fetch(`/api/projects/${project._id}/join`, { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Failed to request access');
+    alert('Access request sent to the project owner.');
+    router.push('/home');
+  };
+
+  const handleSendChatMessage = async (message: ChatMessage): Promise<ChatMessage | null> => {
+    try {
+      const res = await fetch(`/api/projects/${project?._id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: message.message }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send message');
+
+      setChatMessages((current) => [...current, data.message]);
+      return data.message;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to send message');
+      return null;
+    }
+  };
+
+  // Build command palette commands
+  const commandItems: CommandItem[] = useMemo(() => {
+    return [
+      {
+        id: 'new-file',
+        label: 'New File',
+        icon: '📄',
+        category: 'File',
+        shortcut: 'Ctrl+N',
+        action: () => {
+          const input = prompt('Enter file name (e.g. script.js):');
+          if (input && project) {
+            fetch(`/api/projects/${project._id}/files`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'file', name: input, parentPath: null }),
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                if (data.item) {
+                  openFileInTab(data.item);
+                  setRefreshKey((k) => k + 1);
+                  fetchProject();
+                }
+              });
+          }
+        },
+      },
+      {
+        id: 'new-folder',
+        label: 'New Folder',
+        icon: '📁',
+        category: 'File',
+        shortcut: '',
+        action: () => {
+          const input = prompt('Enter folder name:');
+          if (input && project) {
+            fetch(`/api/projects/${project._id}/files`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'folder', name: input, parentPath: null }),
+            })
+              .then((res) => res.json())
+              .then(() => {
+                setRefreshKey((k) => k + 1);
+                fetchProject();
+              });
+          }
+        },
+      },
+      {
+        id: 'save',
+        label: 'Save File',
+        icon: '💾',
+        category: 'File',
+        shortcut: 'Ctrl+S',
+        action: () => {
+          if (activeFile && editorRef.current) {
+            saveFile(activeFile.path, editorRef.current.getValue());
+            setOpenTabs((prev) =>
+              prev.map((tab) =>
+                tab.file.path === activeFile.path ? { ...tab, isDirty: false } : tab
+              )
+            );
+            delete dirtyTabsRef.current[activeFile.path];
+          }
+        },
+      },
+      {
+        id: 'save-all',
+        label: 'Save All Files',
+        icon: '💾',
+        category: 'File',
+        shortcut: '',
+        action: () => {
+          if (!project) return;
+          const allFiles = collectFiles(project.files);
+          allFiles.forEach((file) => {
+            const tab = openTabs.find((t) => t.file.path === file.path);
+            if (tab && tab.isDirty && editorRef.current) {
+              // Get latest content from editor for active file
+              const content = file.path === activeFile?.path ? editorRef.current.getValue() : file.content || '';
+              saveFile(file.path, content);
+            }
+          });
+          setOpenTabs((prev) => prev.map((t) => ({ ...t, isDirty: false })));
+          alert('All files saved');
+        },
+      },
+      {
+        id: 'find',
+        label: 'Find / Replace',
+        icon: '🔍',
+        category: 'Search',
+        shortcut: 'Ctrl+F',
+        action: () => setSearchOpen(true),
+      },
+      {
+        id: 'format',
+        label: 'Format Document',
+        icon: '✨',
+        category: 'Editor',
+        shortcut: 'Shift+Alt+F',
+        action: () => formatDocument(),
+      },
+      {
+        id: 'toggle-minimap',
+        label: showMinimap ? 'Hide Minimap' : 'Show Minimap',
+        icon: '🗺️',
+        category: 'View',
+        shortcut: '',
+        action: () => setShowMinimap((v) => !v),
+      },
+      {
+        id: 'toggle-sidebar',
+        label: showSidebar ? 'Hide Sidebar' : 'Show Sidebar',
+        icon: '📑',
+        category: 'View',
+        shortcut: 'Ctrl+B',
+        action: () => setShowSidebar((v) => !v),
+      },
+      {
+        id: 'toggle-terminal',
+        label: showTerminal ? 'Hide Terminal' : 'Show Terminal',
+        icon: '💻',
+        category: 'View',
+        shortcut: 'Ctrl+`',
+        action: () => setShowTerminal((v) => !v),
+      },
+      {
+        id: 'toggle-breadcrumbs',
+        label: showBreadcrumbs ? 'Hide Breadcrumbs' : 'Show Breadcrumbs',
+        icon: '🧭',
+        category: 'View',
+        shortcut: '',
+        action: () => setShowBreadcrumbs((v) => !v),
+      },
+      ...Object.keys(CUSTOM_THEMES).map((themeName): CommandItem => ({
+        id: `theme-${themeName}`,
+        label: `Theme: ${themeName.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}`,
+        icon: '🎨',
+        category: 'Theme',
+        shortcut: '',
+        action: () => {
+          setTheme(themeName);
+          monacoRef.current?.editor.setTheme(themeName);
+        },
+      })),
+      {
+        id: 'ai-explain',
+        label: 'AI: Explain Selection',
+        icon: '📖',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('explain');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-fix',
+        label: 'AI: Fix Code',
+        icon: '🔧',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('fix');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-optimize',
+        label: 'AI: Optimize',
+        icon: '⚡',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('optimize');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-refactor',
+        label: 'AI: Refactor',
+        icon: '🧹',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('refactor');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-generate-tests',
+        label: 'AI: Generate Tests',
+        icon: '🧪',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('generate_tests');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-add-comments',
+        label: 'AI: Add Comments',
+        icon: '📝',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('add_comments');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'ai-find-bug',
+        label: 'AI: Find Bug',
+        icon: '🐛',
+        category: 'AI',
+        shortcut: '',
+        action: () => {
+          if (!statistics.selectedText) return;
+          setSelectedAIAction('find_bug');
+          setActivePanel('ai');
+        },
+      },
+      {
+        id: 'close-tab',
+        label: 'Close Current Tab',
+        icon: '✕',
+        category: 'File',
+        shortcut: 'Ctrl+W',
+        action: () => {
+          if (activeFile) closeTab(activeFile.path);
+        },
+      },
+      {
+        id: 'close-all-tabs',
+        label: 'Close All Tabs',
+        icon: '🗑️',
+        category: 'File',
+        shortcut: '',
+        action: () => {
+          if (openTabs.some((t) => t.isDirty)) {
+            if (!confirm('Some files have unsaved changes. Close all anyway?')) return;
+          }
+          setOpenTabs([]);
+          switchActiveFile(null);
+        },
+      },
+    ];
+  }, [project, activeFile, openTabs, showMinimap, showSidebar, showTerminal, showBreadcrumbs, formatDocument, saveFile, closeTab, openFileInTab, fetchProject, setRefreshKey, statistics.selectedText, setActivePanel, selectedAIAction, setSelectedAIAction]);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+      // Don't trigger if typing in an input or the command palette is open
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (commandPaletteOpen) return;
+
+      // Ctrl+Shift+P: Command Palette
+      if (ctrlOrCmd && e.shiftKey && e.key === 'p') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+      // Ctrl+P: Quick Open (search files)
+      else if (ctrlOrCmd && e.key === 'p' && !e.shiftKey) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
+      // Ctrl+B: Toggle sidebar
+      else if (ctrlOrCmd && e.key === 'b' && !isInput) {
+        e.preventDefault();
+        setShowSidebar((v) => !v);
+      }
+      // Ctrl+` : Toggle terminal
+      else if (ctrlOrCmd && e.key === '`') {
+        e.preventDefault();
+        setShowTerminal((v) => !v);
+      }
+      // Ctrl+W: Close current tab (when not in input)
+      else if (ctrlOrCmd && e.key === 'w' && !isInput) {
+        e.preventDefault();
+        if (activeFile) closeTab(activeFile.path);
+      }
+      // Ctrl+S: Save (when not in input)
+      else if (ctrlOrCmd && e.key === 's' && !isInput) {
+        e.preventDefault();
+        if (activeFile && editorRef.current) {
+          saveFile(activeFile.path, editorRef.current.getValue());
+          setOpenTabs((prev) =>
+            prev.map((tab) =>
+              tab.file.path === activeFile.path ? { ...tab, isDirty: false } : tab
+            )
+          );
+          delete dirtyTabsRef.current[activeFile.path];
+        }
+      }
+      // Ctrl+Shift+A: Open AI panel
+      else if (ctrlOrCmd && e.shiftKey && e.key === 'a' && !isInput) {
+        e.preventDefault();
+        setActivePanel('ai');
+      }
+      // Ctrl+E: Focus file explorer (use Ctrl+Shift+E to avoid conflicts)
+      else if (ctrlOrCmd && e.shiftKey && e.key === 'e' && !isInput) {
+        e.preventDefault();
+        setShowSidebar(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commandPaletteOpen, activeFile, closeTab, saveFile, setShowSidebar, setShowTerminal, setActivePanel]);
+
+  // File search for command palette quick open
+  const searchFiles = useCallback((query: string): { path: string; name: string }[] => {
+    if (!project) return [];
+    const allFiles = collectFiles(project.files);
+    const q = query.toLowerCase();
+    return allFiles
+      .filter((f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))
+      .map((f) => ({ path: f.path, name: f.name }))
+      .slice(0, 8);
+  }, [project]);
+
+  const handleOpenFileFromSearch = useCallback((path: string) => {
+    if (!project) return;
+    const file = findFileByPath(project.files, path);
+    if (file) {
+      openFileInTab(file);
+    }
+  }, [project, openFileInTab]);
+
+  const canEdit = (isOwner || project?.memberPermissions?.[session?.user?.id || ''] !== 'viewer')
+    // Evidence preservation: once submitted for evaluation, code is read-only
+    // to prevent manipulation of the evidence under review.
+    && project?.status === 'draft';
+
+  // Editor options
+  const editorOptions = {
+    fontSize: 14,
+    minimap: { enabled: showMinimap, renderCharacters: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    tabSize: 2,
+    wordWrap: 'on' as const,
+    lineNumbers: 'on' as const,
+    folding: true,
+    bracketPairColorization: { enabled: true },
+    renderWhitespace: 'selection' as const,
+    cursorBlinking: 'smooth' as const,
+    cursorSmoothCaretAnimation: 'on' as const,
+    smoothScrolling: true,
+    padding: { top: 10, bottom: 10 },
+    autoIndent: 'full' as const,
+    formatOnPaste: true,
+    formatOnType: true,
+    renderLineHighlight: 'all' as const,
+    lineHeight: 22,
+    fontLigatures: true,
+    glyphMargin: true,
+    quickSuggestions: { other: true, comments: true, strings: true },
+    suggestOnTriggerCharacters: true,
+    acceptSuggestionOnEnter: 'on' as const,
+    snippetSuggestions: 'inline' as const,
+    scrollbar: {
+      verticalScrollbarSize: 12,
+      horizontalScrollbarSize: 12,
+      useShadows: false,
+      verticalHasArrows: false,
+      horizontalHasArrows: false,
+    },
+    overviewRulerBorder: false,
+    hideCursorInOverviewRuler: true,
+    roundedSelection: true,
+    mouseWheelZoom: true,
+    readOnly: !canEdit,
+  };
+
+  // Get breadcrumb path segments
+  const breadcrumbs = useMemo(() => {
+    if (!activeFile) return [];
+    const parts = activeFile.path.split('/');
+    let acc = '';
+    return parts.map((part, i) => {
+      acc = acc ? `${acc}/${part}` : part;
+      return { name: part, path: acc, isLast: i === parts.length - 1 };
+    });
+  }, [activeFile]);
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -337,9 +1980,7 @@ export default function EditorPage({ params }: { params: { id: string } }) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-400 text-lg mb-4">{error}</p>
-          <button onClick={() => router.push('/home')} className="btn-primary">
-            Back to Home
-          </button>
+          {project?.isPublic ? <button onClick={handleRequestProjectAccess} className="btn-primary">Request Access</button> : <button onClick={() => router.push('/home')} className="btn-primary">Back to Home</button>}
         </div>
       </div>
     );
@@ -362,126 +2003,258 @@ export default function EditorPage({ params }: { params: { id: string } }) {
     );
   }
 
+  const bgColor = theme === 'vs-code-light' ? '#ffffff' : '#1e1e1e';
+  const textColor = theme === 'vs-code-light' ? '#1a1a1a' : '#cccccc';
+  const tabBg = theme === 'vs-code-light' ? '#ffffff' : '#2d2d2d';
+  const tabInactiveBg = theme === 'vs-code-light' ? '#ececec' : '#1e1e1e';
+  const borderColor = theme === 'vs-code-light' ? '#e0e0e0' : '#333333';
+  const panelBg = theme === 'vs-code-light' ? '#f3f3f3' : '#252526';
+  const inputBg = theme === 'vs-code-light' ? '#ffffff' : '#3c3c3c';
+
+  // Submit the project for evaluation (DRAFT → SUBMITTED). Evidence is snapshotted server-side.
+  async function submitForEvaluation() {
+    if (!project) return;
+    if (project.status && project.status !== 'draft') return;
+    if (!window.confirm('Submit this project for evaluation? It will be locked (read-only) and your development evidence will be recorded for the evaluator.')) return;
+    try {
+      const res = await fetch(`/api/projects/${project._id}/submit`, { method: 'POST' });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok) {
+        alert('Project submitted for evaluation. The workspace is now read-only while it is under review.');
+        await fetchProject();
+      } else {
+        alert(json.error || 'Failed to submit project for evaluation.');
+      }
+    } catch {
+      alert('Failed to submit project for evaluation.');
+    }
+  }
+
   return (
-    <div className="h-screen flex flex-col bg-dark-900">
+    <div className="h-screen flex flex-col" style={{ background: bgColor, color: textColor }}>
       {/* Top Bar */}
-      <div className="flex items-center justify-between px-4 h-12 bg-dark-800 border-b border-dark-600 shrink-0">
+      <div className="flex items-center justify-between px-4 h-10 shrink-0 border-b" style={{ background: panelBg, borderColor }}>
         <div className="flex items-center gap-4">
           <button
             onClick={() => router.push('/home')}
-            className="text-gray-400 hover:text-white transition-colors"
+            className="transition-colors"
+            style={{ color: textColor }}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary-600 rounded flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold" style={{ background: '#007acc', color: 'white' }}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
               </svg>
             </div>
-            <span className="font-semibold text-white">{project.name}</span>
+            <span className="font-semibold text-sm">{project.name}</span>
+            {isOwner && (
+              <button type="button" onClick={() => setShowShareProject(true)} className="px-2 py-1 rounded text-xs hover:bg-white/10" title="Share project">Share</button>
+            )}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={openProjectSettings}
+                className="p-1 rounded hover:bg-white/10"
+                title="Edit project details"
+                aria-label="Edit project details"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m16.862 4.487 1.651-1.651a2.121 2.121 0 0 1 3 3L10.582 16.767a4.5 4.5 0 0 1-1.897 1.13l-3.164.949.949-3.164a4.5 4.5 0 0 1 1.13-1.897l9.262-9.298Z" />
+                </svg>
+              </button>
+            )}
           </div>
-          <span className="text-xs px-2 py-1 bg-dark-700 rounded-full text-gray-400">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-sm" style={{ background: '#4d4d4d33', color: textColor }}>
             {project.language}
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Submit for evaluation — owners only, while project is still a draft */}
+          {isOwner && (!project.status || project.status === 'draft') && (
+            <button
+              onClick={submitForEvaluation}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium transition-colors"
+              style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+              title="Submit project for evaluation"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              <span className="hidden md:inline">Submit</span>
+            </button>
+          )}
+          {project.status && project.status !== 'draft' && (
+            <span
+              className="px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wide"
+              style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}
+              title="Project is locked for evaluation"
+            >
+              {project.status.replace('_', ' ')}
+            </span>
+          )}
+
+          {/* Command Palette button */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors"
+            style={{ background: '#4d4d4d22', color: textColor }}
+            title="Command Palette (Ctrl+Shift+P)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <span className="hidden md:inline">Commands</span>
+          </button>
+
           {/* Terminal toggle */}
           <button
             onClick={() => setShowTerminal(!showTerminal)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              showTerminal
-                ? 'bg-primary-600/20 text-primary-400 hover:bg-primary-600/30'
-                : 'bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600'
+            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
+              showTerminal ? 'text-blue-400' : ''
             }`}
-            title={showTerminal ? 'Hide Terminal' : 'Show Terminal'}
+            style={{ background: '#4d4d4d22', color: showTerminal ? '#4da3ff' : textColor }}
+            title="Toggle Terminal (Ctrl+`)"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Terminal
           </button>
 
-          {/* Online users */}
-          <div className="flex -space-x-2">
-            {onlineUsers.slice(0, 5).map((user, i) => (
+          {/* Live collaboration indicator */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded text-[10px]"
+            style={{ background: '#4d4d4d22', color: '#4da3ff' }}
+            title="Live collaboration active"
+          >
+            <span className="live-badge-dot" />
+            <span className="hidden md:inline font-semibold tracking-wide">LIVE</span>
+          </div>
+
+          {/* Online users with colored avatars */}
+          <div className="flex -space-x-1.5">
+            {onlineUsers.slice(0, 4).map((user, i) => (
               <div
                 key={i}
-                title={user.name}
-                className="w-7 h-7 rounded-full border-2 border-dark-800 bg-primary-600 flex items-center justify-center text-xs font-bold text-white"
+                title={`${user.name}${user.typing ? ' - typing...' : ''}${user.currentFile ? ` - viewing ${user.currentFile.split('/').pop()}` : ''}`}
+                className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold relative"
+                style={{ background: user.color || '#007acc', borderColor: panelBg, color: 'white' }}
               >
                 {user.name?.charAt(0).toUpperCase()}
+                {user.typing && (
+                  <span className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-green-500 border border-white" />
+                )}
               </div>
             ))}
-            {onlineUsers.length > 5 && (
-              <div className="w-7 h-7 rounded-full border-2 border-dark-800 bg-dark-600 flex items-center justify-center text-xs text-white">
-                +{onlineUsers.length - 5}
+            {onlineUsers.length > 4 && (
+              <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px]" style={{ background: '#4d4d4d', borderColor: panelBg, color: 'white' }}>
+                +{onlineUsers.length - 4}
               </div>
             )}
           </div>
 
+          {/* Typing indicator pill */}
+          {Object.entries(typingUsers)
+            .filter(([id]) => id !== session?.user?.id)
+            .length > 0 && (
+            <div className="typing-pill flex items-center gap-1.5 px-2 py-1 rounded text-[10px]" style={{ background: '#4d4d4d33', color: '#4da3ff' }}>
+              <span className="flex items-center gap-0.5">
+                <span className="typing-dot" style={{ background: '#4da3ff' }} />
+                <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.2s' }} />
+                <span className="typing-dot" style={{ background: '#4da3ff', animationDelay: '0.4s' }} />
+              </span>
+              <span className="font-medium">
+                {(() => {
+                  const typing = Object.entries(typingUsers).filter(([id]) => id !== session?.user?.id);
+                  if (typing.length === 1) return `${typing[0][1].name} is typing...`;
+                  if (typing.length === 2) return `${typing[0][1].name} and ${typing[1][1].name} are typing...`;
+                  return `Multiple people are typing...`;
+                })()}
+              </span>
+            </div>
+          )}
+
           {/* Join requests (owner only) */}
-          {isOwner && project.pendingRequests.length > 0 && (
+          {isOwner && (
             <button
               onClick={() => setShowRequests(!showRequests)}
-              className="relative px-3 py-1.5 bg-yellow-500/20 text-yellow-400 rounded-lg text-sm font-medium hover:bg-yellow-500/30 transition-colors"
+              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                showRequests
+                  ? 'text-yellow-300 bg-yellow-500/20'
+                  : project.pendingRequests.length > 0
+                  ? 'text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20'
+                  : 'text-gray-400 hover:text-gray-300 hover:bg-white/10'
+              }`}
+              title="Join requests"
             >
-              {project.pendingRequests.length} Request{project.pendingRequests.length > 1 ? 's' : ''}
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                {project.pendingRequests.length > 0 && (
+                  <span className="px-1.5 py-0.25 rounded-full text-[10px]" style={{ background: '#e5c07b', color: '#1e1e1e' }}>
+                    {project.pendingRequests.length}
+                  </span>
+                )}
+              </div>
             </button>
           )}
 
+          {/* User */}
           <div className="flex items-center gap-2">
             {session?.user?.image ? (
               <img
                 src={session.user.image}
                 alt={session.user.name || 'User'}
-                className="w-7 h-7 rounded-full"
+                className="w-6 h-6 rounded-full"
               />
             ) : (
-              <div className="w-7 h-7 bg-primary-600 rounded-full flex items-center justify-center text-xs font-bold">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: '#007acc', color: 'white' }}>
                 {(session?.user?.name || 'U').charAt(0).toUpperCase()}
               </div>
             )}
-            <span className="text-sm text-gray-400 hidden sm:block">
-              {session?.user?.name}
-            </span>
+            <span className="text-xs hidden sm:block">{session?.user?.name}</span>
           </div>
         </div>
       </div>
 
       {/* Join Requests Panel */}
       {showRequests && isOwner && (
-        <div className="bg-dark-800 border-b border-dark-600 p-4 shrink-0">
-          <h3 className="text-sm font-semibold text-white mb-3">Join Requests</h3>
+        <div className="p-4 border-b shrink-0" style={{ background: panelBg, borderColor }}>
+          <h3 className="text-sm font-semibold mb-3">Join Requests</h3>
           <div className="space-y-2">
             {project.pendingRequests.map((user) => (
-              <div key={user._id} className="flex items-center justify-between bg-dark-700 rounded-lg p-3">
+              <div key={user._id} className="flex items-center justify-between rounded-lg p-3" style={{ background: '#4d4d4d33' }}>
                 <div className="flex items-center gap-3">
                   {user.image ? (
                     <img src={user.image} alt={user.name} className="w-8 h-8 rounded-full" />
                   ) : (
-                    <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: '#007acc', color: 'white' }}>
                       {user.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div>
-                    <p className="text-sm font-medium text-white">{user.name}</p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
+                    <p className="text-sm font-medium">{user.name}</p>
+                    <p className="text-xs opacity-70">{user.email}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleAcceptRequest(user._id)}
-                    className="px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-sm hover:bg-green-500/30 transition-colors"
+                    className="px-3 py-1.5 rounded text-sm hover:opacity-80 transition-opacity"
+                    style={{ background: '#3fb95033', color: '#3fb950' }}
                   >
                     Accept
                   </button>
                   <button
                     onClick={() => handleRejectRequest(user._id)}
-                    className="px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg text-sm hover:bg-red-500/30 transition-colors"
+                    className="px-3 py-1.5 rounded text-sm hover:opacity-80 transition-opacity"
+                    style={{ background: '#f8514933', color: '#f85149' }}
                   >
                     Reject
                   </button>
@@ -492,19 +2265,70 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
       )}
 
+      {showProjectSettings && isOwner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={handleSaveProjectSettings} className="w-full max-w-md rounded-md border p-5 shadow-xl" style={{ background: panelBg, borderColor }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold">Project Details</h2>
+              <button type="button" onClick={() => setShowProjectSettings(false)} className="p-1 rounded hover:bg-white/10" aria-label="Close project settings">×</button>
+            </div>
+            <label className="block text-xs font-medium mb-1" htmlFor="project-name">Name</label>
+            <input id="project-name" value={projectNameDraft} onChange={(e) => setProjectNameDraft(e.target.value)} className="input-field w-full mb-4" maxLength={100} required />
+            <label className="block text-xs font-medium mb-1" htmlFor="project-description">Description</label>
+            <textarea id="project-description" value={projectDescriptionDraft} onChange={(e) => setProjectDescriptionDraft(e.target.value)} className="input-field w-full min-h-24 resize-y" maxLength={500} required />
+            <div className="flex items-center justify-between mt-4 border border-white/10 rounded p-3">
+              <div><p className="text-sm font-medium">{projectVisibilityDraft ? 'Public project' : 'Private project'}</p><p className="text-xs opacity-60">{projectVisibilityDraft ? 'Anyone can request access.' : 'Only invited members can access it.'}</p></div>
+              <button type="button" onClick={() => setProjectVisibilityDraft((value) => !value)} className={`relative w-10 h-5 rounded-full ${projectVisibilityDraft ? 'bg-primary-600' : 'bg-gray-600'}`} aria-label="Toggle project visibility"><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${projectVisibilityDraft ? 'translate-x-5' : 'translate-x-1'}`} /></button>
+            </div>
+            <div className="mt-4 border border-white/10 rounded p-3">
+              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Secure invite link</p><p className="text-xs opacity-60">Expires seven days after creation.</p></div><button type="button" onClick={handleGenerateInvite} className="px-2 py-1 text-xs rounded bg-primary-600 hover:bg-primary-700">Generate</button></div>
+              {inviteLink && <div className="flex gap-2 mt-2"><input readOnly value={inviteLink} className="input-field text-xs flex-1" /><button type="button" onClick={() => navigator.clipboard.writeText(inviteLink)} className="px-2 py-1 text-xs rounded hover:bg-white/10">Copy</button></div>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setShowProjectSettings(false)} className="px-3 py-1.5 text-sm rounded hover:bg-white/10">Cancel</button>
+              <button type="submit" disabled={savingProjectSettings} className="btn-primary text-sm disabled:opacity-50">{savingProjectSettings ? 'Saving...' : 'Save'}</button>
+            </div>
+            <div className="mt-5 pt-4 border-t border-red-500/30"><button type="button" onClick={handleDeleteProject} className="text-sm text-red-400 hover:text-red-300">Delete project permanently</button></div>
+          </form>
+        </div>
+      )}
+
+      {showShareProject && isOwner && (
+        <ShareProjectModal
+          projectId={project._id}
+          projectName={project.name}
+          isPublic={project.isPublic}
+          onClose={() => setShowShareProject(false)}
+          onVisibilityChange={(isPublic) => setProject((current) => current ? { ...current, isPublic } : current)}
+        />
+      )}
+
+      {/* Command Palette */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={commandItems}
+        onFileSearch={searchFiles}
+        files={collectFiles(project.files)}
+        onOpenFile={handleOpenFileFromSearch}
+      />
+
       {/* Main Content - VS Code style layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* File Explorer */}
-        <FileExplorer
-          projectId={project._id}
-          files={project.files}
-          activeFile={activeFile}
-          onFileSelect={setActiveFile}
-          onFilesChange={() => {
-            setRefreshKey((k) => k + 1);
-            fetchProject();
-          }}
-        />
+<div className="vscode-root">
+        {showSidebar && (
+          <FileExplorer
+            projectId={project._id}
+            files={project.files}
+            activeFile={activeFile}
+            onFileSelect={openFileInTab}
+            onFilesChange={() => {
+              setRefreshKey((k) => k + 1);
+              fetchProject();
+            }}
+          />
+        )}
 
         {/* Center Area: Editor on top, Terminal at bottom */}
         <div className="flex-1 flex flex-col min-w-0">
@@ -513,24 +2337,131 @@ export default function EditorPage({ params }: { params: { id: string } }) {
             {/* Editor */}
             <div className="flex-1 flex flex-col min-w-0">
               {/* Editor Tabs */}
-              <div className="flex items-center bg-dark-800 border-b border-dark-600 overflow-x-auto shrink-0">
-                {collectFiles(project.files).map((file) => (
-                  <button
-                    key={file.path}
-                    onClick={() => setActiveFile(file)}
-                    className={`px-4 py-2 text-sm border-r border-dark-600 whitespace-nowrap transition-colors ${
-                      activeFile?.path === file.path
-                        ? 'bg-dark-900 text-white border-t-2 border-t-primary-600'
-                        : 'text-gray-400 hover:text-white'
-                    }`}
-                  >
-                    {file.name}
-                  </button>
-                ))}
+              <div className="flex items-center border-b overflow-x-auto shrink-0" style={{ background: tabInactiveBg, borderColor }}>
+                {openTabs.length === 0 && (
+                  <div className="px-4 py-2 text-sm opacity-50">No files open</div>
+                )}
+                {openTabs.map((tab) => {
+                  const isActive = activeFile?.path === tab.file.path;
+                  return (
+                    <div
+                      key={tab.file.path}
+                      onClick={() => switchActiveFile(tab.file)}
+                      onMouseDown={(e) => {
+                        if (e.button === 1) {
+                          e.preventDefault();
+                          closeTab(tab.file.path);
+                        }
+                      }}
+                      className={`group flex items-center gap-1.5 px-3 py-2 text-sm border-r whitespace-nowrap cursor-pointer select-none transition-colors ${
+                        isActive ? 'font-normal' : ''
+                      }`}
+                      style={{
+                        background: isActive ? tabBg : 'transparent',
+                        borderRightColor: borderColor,
+                        color: isActive ? textColor : '#8b949e',
+                      }}
+                    >
+                      <span className="text-xs">{getFileIcon(tab.file)}</span>
+                      <span className="text-[13px]">{tab.file.name}</span>
+                      <span className="relative">
+                        {tab.isDirty ? (
+                          <span
+                            className="w-2.5 h-2.5 rounded-full inline-block"
+                            style={{ background: '#e5c07b' }}
+                            title="Unsaved changes"
+                          />
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              closeTab(tab.file.path);
+                            }}
+                            className={`p-0.5 rounded-full hover:opacity-100 ${isActive ? 'opacity-0 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
+                            title="Close Tab (Ctrl+W)"
+                            style={{ color: '#8b949e' }}
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
+              {/* Breadcrumbs */}
+              {showBreadcrumbs && activeFile && (
+                <div className="flex items-center gap-0.5 px-4 py-1 border-b text-xs overflow-x-auto whitespace-nowrap shrink-0" style={{ background: tabBg, borderColor }}>
+                  {breadcrumbs.map((crumb, i) => (
+                    <span key={crumb.path} className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => {
+                          if (!crumb.isLast && project) {
+                            const f = findFileByPath(project.files, crumb.path);
+                            if (f) openFileInTab(f);
+                          }
+                        }}
+                        className={`hover:text-blue-400 ${crumb.isLast ? 'opacity-90' : 'opacity-60'}`}
+                      >
+                        {crumb.name}
+                      </button>
+                      {!crumb.isLast && (
+                        <span className="opacity-50">›</span>
+                      )}
+                    </span>
+                  ))}
+                  {/* Users viewing this file */}
+                  {currentFileOnlineUsers.length > 0 && (
+                    <div className="flex -space-x-1.5 mr-2">
+                      {currentFileOnlineUsers.slice(0, 3).map((user, i) => (
+                        <div
+                          key={i}
+                          title={`${user.name} is viewing this file`}
+                          className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px] font-bold"
+                          style={{ background: user.color || '#4da3ff', borderColor: tabBg, color: '#fff' }}
+                        >
+                          {user.name?.charAt(0).toUpperCase()}
+                        </div>
+                      ))}
+                      {currentFileOnlineUsers.length > 3 && (
+                        <div className="w-4 h-4 rounded-full border flex items-center justify-center text-[7px]" style={{ background: '#4d4d4d', borderColor: tabBg, color: '#fff' }}>
+                          +{currentFileOnlineUsers.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="ml-auto flex items-center gap-3">
+                    {errors.length > 0 && (
+                      <button
+                        onClick={() => {
+                          editorRef.current?.trigger('errors', 'editor.action.marker.next', {});
+                        }}
+                        className="flex items-center gap-1 text-red-400 hover:text-red-300"
+                        title={`${errors.length} errors in file`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        {errors.length}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Search & Replace */}
+              <SearchAndReplace
+                isOpen={searchOpen}
+                onClose={() => setSearchOpen(false)}
+                editorRef={editorRef}
+                monacoRef={monacoRef}
+              />
+
               {/* Monaco Editor */}
-              <div className="flex-1 min-h-0">
+              <div className="flex-1 min-h-0 vscode-editor-container relative" style={{ background: bgColor }}>
                 {activeFile && (
                   <Editor
                     key={refreshKey}
@@ -538,60 +2469,144 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     defaultLanguage={activeFile.language || 'javascript'}
                     language={activeFile.language || 'javascript'}
                     value={activeFile.content || ''}
-                    theme="vs-dark"
+                    theme={theme}
                     onChange={handleEditorChange}
                     onMount={handleEditorMount}
-                    options={{
-                      fontSize: 14,
-                      minimap: { enabled: true },
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      tabSize: 2,
-                      wordWrap: 'on',
-                      lineNumbers: 'on',
-                      folding: true,
-                      bracketPairColorization: { enabled: true },
-                      renderWhitespace: 'selection',
-                      cursorBlinking: 'smooth',
-                      cursorSmoothCaretAnimation: 'on',
-                      smoothScrolling: true,
-                      padding: { top: 10, bottom: 10 },
+                    options={editorOptions}
+                    beforeMount={(monaco) => {
+                      Object.entries(CUSTOM_THEMES).forEach(([name, themeData]) => {
+                        monaco.editor.defineTheme(name, themeData as any);
+                      });
                     }}
                   />
                 )}
+
+                {/* Live typing watermark overlay */}
+                {(() => {
+                  const typingHere = Object.entries(typingUsers).filter(
+                    ([id, t]) => id !== session?.user?.id && (!t.file || t.file === activeFile?.path)
+                  );
+                  if (typingHere.length === 0) return null;
+                  const names = typingHere.map(([, t]) => t.name);
+                  const label =
+                    names.length === 1
+                      ? `${names[0]} is typing…`
+                      : names.length === 2
+                      ? `${names[0]} and ${names[1]} are typing…`
+                      : `${names.length} people are typing…`;
+                  const accent = typingHere[0][1].color || '#4da3ff';
+                  return (
+                    <div
+                      className="typing-watermark absolute bottom-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full shadow-lg pointer-events-none"
+                      style={{
+                        background: 'rgba(30, 30, 30, 0.85)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        backdropFilter: 'blur(4px)',
+                      }}
+                    >
+                      <span className="flex items-center gap-0.5">
+                        <span className="typing-dot" style={{ background: accent }} />
+                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.2s' }} />
+                        <span className="typing-dot" style={{ background: accent, animationDelay: '0.4s' }} />
+                      </span>
+                      <span className="text-xs font-medium" style={{ color: '#cfd8dc' }}>
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Status Bar */}
+              <div className="flex items-center justify-between px-3 py-[1px] text-[11px] shrink-0 border-t select-none" style={{ background: '#007acc', color: 'white', borderColor: 'transparent' }}>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {activeFile?.language || 'Plain Text'}
+                  </span>
+                  <span>
+                    Ln {statistics.line}, Col {statistics.column}
+                  </span>
+                  <span>
+                    {statistics.lineCount} lines
+                  </span>
+                  {statistics.selectedText && (
+                    <span>
+                      {statistics.selectedText.length} chars selected
+                    </span>
+                  )}
+                  {statistics.selectedText && (
+                    <button
+                      onClick={() => {
+                        setActivePanel('ai');
+                      }}
+                      className="flex items-center gap-1 hover:bg-white/20 rounded px-1.5 py-0.5 transition-colors"
+                      title="AI Actions (Ctrl+Shift+A)"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      <span className="font-medium">AI</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {/* Sync status */}
+                  <span className="collab-sync-status" title={
+                    effectiveSyncStatus === 'offline' ? 'You are offline - changes will save when you reconnect'
+                    : effectiveSyncStatus === 'saving' ? 'Saving changes...'
+                    : realtimeConnected ? 'Live - realtime collaboration active'
+                    : 'Synced - realtime collaboration unavailable (changes still save)'
+                  }>
+                    <span className={`collab-sync-dot ${effectiveSyncStatus === 'saving' ? 'saving' : effectiveSyncStatus === 'offline' ? 'offline' : 'synced'}`} />
+                    <span>
+                      {effectiveSyncStatus === 'synced' ? (realtimeConnected ? 'Live' : 'Synced') : effectiveSyncStatus === 'saving' ? 'Saving...' : 'Offline'}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 1.096A4.001 4.001 0 003 15z" />
+                    </svg>
+                    UTF-8
+                  </span>
+                  <span>Spaces: 2</span>
+                  <span>LF</span>
+                </div>
               </div>
             </div>
 
             {/* Right Panel */}
-            <div className="w-80 bg-dark-800 border-l border-dark-600 flex flex-col shrink-0">
+            <div className="w-80 border-l flex flex-col shrink-0" style={{ background: panelBg, borderColor }}>
               {/* Panel Tabs */}
-              <div className="flex border-b border-dark-600 shrink-0">
+              <div className="flex border-b shrink-0" style={{ borderColor }}>
                 <button
                   onClick={() => setActivePanel('chat')}
-                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
                     activePanel === 'chat'
-                      ? 'text-primary-500 border-b-2 border-primary-600'
-                      : 'text-gray-400 hover:text-white'
+                      ? 'text-blue-400 border-blue-500'
+                      : 'opacity-60 hover:opacity-100 border-transparent'
                   }`}
                 >
                   Chat
                 </button>
                 <button
                   onClick={() => setActivePanel('ai')}
-                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
                     activePanel === 'ai'
-                      ? 'text-primary-500 border-b-2 border-primary-600'
-                      : 'text-gray-400 hover:text-white'
+                      ? 'text-blue-400 border-blue-500'
+                      : 'opacity-60 hover:opacity-100 border-transparent'
                   }`}
                 >
                   AI Assistant
                 </button>
                 <button
                   onClick={() => setActivePanel('members')}
-                  className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                  className={`flex-1 py-2.5 text-xs font-medium transition-colors border-b-2 ${
                     activePanel === 'members'
-                      ? 'text-primary-500 border-b-2 border-primary-600'
-                      : 'text-gray-400 hover:text-white'
+                      ? 'text-blue-400 border-blue-500'
+                      : 'opacity-60 hover:opacity-100 border-transparent'
                   }`}
                 >
                   Members
@@ -604,8 +2619,10 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                   <ChatPanel
                     projectId={project._id}
                     messages={chatMessages}
-                    socket={socketRef.current}
+                    socket={socketInstance}
                     currentUser={session?.user ?? null}
+                    onSendMessage={handleSendChatMessage}
+                    typingUsers={chatTypingUsers}
                   />
                 )}
                 {activePanel === 'ai' && (
@@ -613,45 +2630,39 @@ export default function EditorPage({ params }: { params: { id: string } }) {
                     code={activeFile?.content || ''}
                     language={activeFile?.language || 'javascript'}
                     projectName={project.name}
+                    projectId={project._id}
+                    selectedCode={statistics.selectedText || ''}
+                    selectedAction={selectedAIAction}
+                    onActionExecuted={() => setSelectedAIAction(null)}
+                    onAction={(action, result) => {
+                      if (action !== 'chat') {
+                        console.log('AI action:', action, result);
+                      }
+                    }}
                   />
                 )}
                 {activePanel === 'members' && (
-                  <div className="p-4 space-y-3 overflow-y-auto h-full">
-                    <h3 className="text-sm font-semibold text-white mb-3">
-                      Project Members ({project.members.length + 1})
-                    </h3>
-                    {/* Owner */}
-                    <div className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
-                      {project.owner.image ? (
-                        <img src={project.owner.image} alt={project.owner.name} className="w-8 h-8 rounded-full" />
-                      ) : (
-                        <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
-                          {project.owner.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-medium text-white">{project.owner.name}</p>
-                        <p className="text-xs text-primary-500">Owner</p>
-                      </div>
-                    </div>
-                    {/* Members */}
-                    {project.members
-                      .filter((m) => m._id !== project.owner._id)
-                      .map((member) => (
-                        <div key={member._id} className="flex items-center gap-3 bg-dark-700 rounded-lg p-3">
-                          {member.image ? (
-                            <img src={member.image} alt={member.name} className="w-8 h-8 rounded-full" />
-                          ) : (
-                            <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-sm font-bold">
-                              {member.name.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-white">{member.name}</p>
-                            <p className="text-xs text-gray-500">Member</p>
-                          </div>
-                        </div>
-                      ))}
+                  <div className="h-full flex flex-col">
+                    <CollaborationPanel
+                      onlineUsers={onlineUsers}
+                      projectMembers={project.members}
+                      projectOwner={project.owner}
+                      currentUserId={session?.user?.id}
+                      typingUsers={typingUsers}
+                      isProjectOwner={isOwner}
+                      onRemoveMember={handleRemoveMember}
+                      memberPermissions={project.memberPermissions}
+                      onPermissionChange={handlePermissionChange}
+                      projectDetails={{
+                        name: project.name,
+                        description: project.description,
+                        language: project.language,
+                        tags: project.tags,
+                        isPublic: project.isPublic,
+                      }}
+                      onUpdateProjectDetails={handleUpdateProjectDetails}
+                    />
+                    {!isOwner && <div className="px-4 pb-4"><button type="button" onClick={handleLeaveProject} className="w-full text-sm text-red-400 border border-red-500/30 rounded py-2 hover:bg-red-500/10">Leave project</button></div>}
                   </div>
                 )}
               </div>
@@ -671,5 +2682,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
       </div>
     </div>
+  </div>
   );
 }

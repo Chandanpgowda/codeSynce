@@ -156,8 +156,8 @@ export default function CreateProjectModal({ onClose, onCreated }: CreateProject
               }`}
             >
               <span
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-                  isPublic ? 'translate-x-7' : 'translate-x-1'
+                className={`absolute top-1/2 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-200 transform -translate-y-1/2 ${
+                  isPublic ? 'translate-x-6' : 'translate-x-0'
                 }`}
               />
             </button>
