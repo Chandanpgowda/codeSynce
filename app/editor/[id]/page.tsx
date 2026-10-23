@@ -2672,7 +2672,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
           {/* Terminal at bottom (VS Code style) */}
           {showTerminal && (
             <Terminal
-</div>
               projectId={project._id}
               language={project.language}
               code={activeFile?.content || ''}
@@ -2683,5 +2682,6 @@ export default function EditorPage({ params }: { params: { id: string } }) {
         </div>
       </div>
     </div>
+  </div>
   );
 }

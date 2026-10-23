@@ -107,9 +107,12 @@ export default function HomePage() {
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin');
-    } else if (status === 'authenticated' && session?.user?.role === 'evaluator') {
-      // Evaluators use the separate evaluator dashboard, never the builder home.
-      router.push('/evaluator');
+    } else if (status === 'authenticated') {
+      if (session?.user?.role === 'evaluator') {
+        // Evaluators use the separate evaluator dashboard, never the builder home.
+        router.push('/evaluator');
+      }
+      // Builders with no role default to builder home (role defaults to 'builder' in DB)
     }
   }, [status, router, session?.user?.role]);
 

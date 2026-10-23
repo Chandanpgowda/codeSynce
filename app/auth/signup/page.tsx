@@ -1,15 +1,28 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import AuthComponent from '@/components/ui/sign-up';
 
 export default function SignUpPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   // Kept between the "request OTP" and "verify OTP" steps of the flow.
   const credentialsRef = useRef<{ email: string; password: string } | null>(null);
   const [googleError, setGoogleError] = useState('');
+
+  // After signup session is established, redirect based on server-assigned role.
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      if (session.user.role === 'evaluator') {
+        router.push('/evaluator');
+      } else {
+        router.push('/home');
+      }
+    }
+  }, [status, session, router]);
 
   const handleRequestOtp = async (email: string, password: string): Promise<string | null> => {
     try {

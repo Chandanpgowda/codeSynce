@@ -1,24 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import SignInCard2 from '@/components/ui/sign-in-card-2';
-
-async function getRole(): Promise<'builder' | 'evaluator' | 'guest'> {
-  try {
-    const res = await fetch('/api/auth/session');
-    const session = await res.json();
-    if (session?.user?.role) return session.user.role;
-    return 'guest';
-  } catch {
-    return 'guest';
-  }
-}
 
 export default function SignInPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [error, setError] = useState('');
+
+  // After a successful sign-in, redirect based on server-assigned role.
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user) {
+      if (session.user.role === 'evaluator') {
+        router.push('/evaluator');
+      } else {
+        router.push('/home');
+      }
+    }
+  }, [status, session, router]);
 
   const handleEmailSignIn = async (identifier: string, password: string): Promise<string | null> => {
     if (!identifier || !password) {
@@ -36,13 +38,7 @@ export default function SignInPage() {
         return 'Invalid email or password';
       }
 
-      // Route by the SERVER-ASSIGNED role (never by client state).
-      const role = await getRole();
-      if (role === 'evaluator') {
-        router.push('/evaluator');
-      } else {
-        router.push('/home');
-      }
+      // The useEffect above will handle the redirect once session updates.
       return null;
     } catch (err) {
       console.error('Sign in error:', err);
